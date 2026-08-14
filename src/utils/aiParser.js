@@ -157,31 +157,67 @@ function toRestContents(contents) {
   return [{ role: 'user', parts: contents }];
 }
 
-async function requestGeminiOnce(contents, { temperature, systemInstruction }) {
-  const response = await fetch(`${PROXY_BASE_URL}/v1beta/models/${MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: toRestContents(contents),
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature,
-        // gemini-3.6-flash is a "thinking" model that can burn its entire
-        // output budget on internal reasoning before ever writing the final
-        // JSON answer, which surfaces as an empty response with no error.
-        // Recipe extraction doesn't need deep reasoning, so keep thinking
-        // minimal to leave the budget for the actual answer.
-        thinkingConfig: { thinkingLevel: 'LOW' },
-      },
-    }),
-  });
+// The Gemini free tier allows only a small number of requests per minute
+// (independent from -- and much lower than -- the daily/monthly quota shown
+// as a percentage in Google's dashboard). Heavy testing or several imports
+// in quick succession can trip this even when overall usage looks low.
+// Google's 429 response includes a suggested wait time, so auto-retry once
+// after that delay instead of failing outright for a purely transient limit.
+const MAX_AUTO_RETRY_DELAY_SECONDS = 65;
+
+function extractRetryDelaySeconds(errorBody) {
+  const details = errorBody?.error?.details ?? [];
+  const retryInfo = details.find((detail) => detail['@type']?.includes('RetryInfo'));
+  const match = /^([\d.]+)s$/.exec(retryInfo?.retryDelay ?? '');
+  return match ? parseFloat(match[1]) : null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestGeminiOnce(contents, { temperature, systemInstruction }, allowRateLimitRetry = true) {
+  let response;
+  try {
+    response = await fetch(`${PROXY_BASE_URL}/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: toRestContents(contents),
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature,
+          // gemini-3.6-flash is a "thinking" model that can burn its entire
+          // output budget on internal reasoning before ever writing the final
+          // JSON answer, which surfaces as an empty response with no error.
+          // Recipe extraction doesn't need deep reasoning, so keep thinking
+          // minimal to leave the budget for the actual answer.
+          thinkingConfig: { thinkingLevel: 'LOW' },
+        },
+      }),
+    });
+  } catch (networkError) {
+    throw new Error(`Could not reach Gemini. Check your connection. (${networkError.message})`);
+  }
 
   const data = await response.json().catch(() => null);
 
+  if (response.status === 429 && allowRateLimitRetry) {
+    const retryDelaySeconds = extractRetryDelaySeconds(data);
+    if (retryDelaySeconds != null && retryDelaySeconds <= MAX_AUTO_RETRY_DELAY_SECONDS) {
+      await sleep((retryDelaySeconds + 1) * 1000);
+      return requestGeminiOnce(contents, { temperature, systemInstruction }, false);
+    }
+  }
+
   if (!response.ok) {
-    const message = data?.error?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    if (response.status === 429) {
+      throw new Error(
+        "Gemini's free-tier limit is a small number of requests per minute. Please wait about a minute and try again."
+      );
+    }
+    throw new Error(data?.error?.message || `HTTP ${response.status}`);
   }
 
   return data;
@@ -206,12 +242,10 @@ async function callGemini(contents) {
   let lastReason = 'no candidates returned';
 
   for (const attempt of attempts) {
-    let response;
-    try {
-      response = await requestGeminiOnce(contents, attempt);
-    } catch (error) {
-      throw new Error(`Could not reach Gemini. Check your connection. (${error.message})`);
-    }
+    // requestGeminiOnce already produces clear, final error messages
+    // (network failure, rate limit, etc.) -- let them propagate as-is
+    // instead of wrapping them in a redundant/confusing prefix.
+    const response = await requestGeminiOnce(contents, attempt);
 
     const candidate = response?.candidates?.[0];
     const content = extractText(candidate);

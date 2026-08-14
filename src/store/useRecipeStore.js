@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Dessert'];
 
@@ -48,33 +50,48 @@ const mockRecipes = [
   },
 ];
 
-export const useRecipeStore = create((set) => ({
-  recipes: mockRecipes,
+// Persisted to AsyncStorage so recipes survive force-closing/reopening the
+// app -- without this, Zustand state only lives in memory for the life of
+// the JS process, and every relaunch would reset back to the seed mock data.
+export const useRecipeStore = create(
+  persist(
+    (set) => ({
+      recipes: mockRecipes,
 
-  addRecipe: (recipe) =>
-    set((state) => ({
-      recipes: [
-        ...state.recipes,
-        {
-          id: recipe.id ?? Date.now().toString(),
-          createdAt: recipe.createdAt ?? new Date().toISOString(),
-          ...recipe,
-        },
-      ],
-    })),
+      addRecipe: (recipe) =>
+        set((state) => ({
+          recipes: [
+            ...state.recipes,
+            {
+              id: recipe.id ?? Date.now().toString(),
+              createdAt: recipe.createdAt ?? new Date().toISOString(),
+              ...recipe,
+            },
+          ],
+        })),
 
-  deleteRecipe: (id) =>
-    set((state) => ({
-      recipes: state.recipes.filter((recipe) => recipe.id !== id),
-    })),
+      deleteRecipe: (id) =>
+        set((state) => ({
+          recipes: state.recipes.filter((recipe) => recipe.id !== id),
+        })),
 
-  updateRecipe: (id, updates) =>
-    set((state) => ({
-      recipes: state.recipes.map((recipe) =>
-        recipe.id === id ? { ...recipe, ...updates } : recipe
-      ),
-    })),
-}));
+      updateRecipe: (id, updates) =>
+        set((state) => ({
+          recipes: state.recipes.map((recipe) =>
+            recipe.id === id ? { ...recipe, ...updates } : recipe
+          ),
+        })),
+    }),
+    {
+      name: 'recipe-app-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only the recipes themselves need to survive a restart -- actions are
+      // functions and get re-created fresh from the store definition above
+      // every launch, so persisting them would be wasted/invalid storage.
+      partialize: (state) => ({ recipes: state.recipes }),
+    }
+  )
+);
 
 /**
  * Selector factory: returns a single recipe by id, or undefined if it no
