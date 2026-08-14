@@ -1,7 +1,11 @@
-import { GoogleGenAI } from '@google/genai';
 import { CATEGORIES } from '../store/useRecipeStore';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+// All Gemini calls go through a Cloudflare Worker proxy instead of Google's
+// API directly. The real API key lives only as a secret on that Worker --
+// it is never bundled into this app's JS, so it can't leak via view-source,
+// GitHub secret scanning, or APK decompiling (unlike a raw EXPO_PUBLIC_ key).
+const PROXY_BASE_URL =
+  process.env.EXPO_PUBLIC_GEMINI_PROXY_URL || 'https://gemini-proxy.stormwalker161.workers.dev';
 // gemini-2.5-flash is restricted for newly-created API keys ahead of its Oct
 // 2026 retirement. gemini-1.5-flash and gemini-2.0-flash are fully shut down
 // (not just new-user-restricted), so gemini-3.6-flash is the current GA model.
@@ -23,22 +27,6 @@ Rules:
 - "category" must be exactly one of the five values listed above.
 - "ingredients" and "instructions" must be arrays of short strings, one item per entry.
 - Do not include any keys other than the five listed above.`;
-
-let cachedClient = null;
-
-function getClient() {
-  if (!GEMINI_API_KEY) {
-    throw new Error(
-      'Missing Gemini API key. Add EXPO_PUBLIC_GEMINI_API_KEY to your .env file and restart the dev server.'
-    );
-  }
-
-  if (!cachedClient) {
-    cachedClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  }
-
-  return cachedClient;
-}
 
 function stripHtml(html) {
   return html
@@ -158,24 +146,54 @@ const RECITATION_RETRY_SUFFIX = `
 
 Important: Some earlier attempts to answer were blocked because the wording matched a well-known published recipe too closely. Rephrase every ingredient and instruction in your own words instead of quoting the source verbatim -- keep exact quantities, temperatures, and times unchanged, but reword the surrounding language.`;
 
-async function requestGeminiOnce(contents, { temperature, systemInstruction }) {
-  const ai = getClient();
+// Normalizes the `contents` shapes used throughout this file (a plain string,
+// or a flat array of parts like [{ text }, { inlineData }]) into the
+// Content[] shape Gemini's REST API expects.
+function toRestContents(contents) {
+  if (typeof contents === 'string') {
+    return [{ role: 'user', parts: [{ text: contents }] }];
+  }
 
-  return ai.models.generateContent({
-    model: MODEL,
-    contents,
-    config: {
-      systemInstruction,
-      responseMimeType: 'application/json',
-      temperature,
-      // gemini-3.6-flash is a "thinking" model that can burn its entire
-      // output budget on internal reasoning before ever writing the final
-      // JSON answer, which surfaces as an empty response.text with no
-      // error. Recipe extraction doesn't need deep reasoning, so keep
-      // thinking minimal to leave the budget for the actual answer.
-      thinkingConfig: { thinkingLevel: 'LOW' },
-    },
+  return [{ role: 'user', parts: contents }];
+}
+
+async function requestGeminiOnce(contents, { temperature, systemInstruction }) {
+  const response = await fetch(`${PROXY_BASE_URL}/v1beta/models/${MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: toRestContents(contents),
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature,
+        // gemini-3.6-flash is a "thinking" model that can burn its entire
+        // output budget on internal reasoning before ever writing the final
+        // JSON answer, which surfaces as an empty response with no error.
+        // Recipe extraction doesn't need deep reasoning, so keep thinking
+        // minimal to leave the budget for the actual answer.
+        thinkingConfig: { thinkingLevel: 'LOW' },
+      },
+    }),
   });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message = data?.error?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+function extractText(candidate) {
+  const parts = candidate?.content?.parts ?? [];
+  const text = parts
+    .map((part) => part.text)
+    .filter(Boolean)
+    .join('');
+  return text || null;
 }
 
 async function callGemini(contents) {
@@ -195,12 +213,12 @@ async function callGemini(contents) {
       throw new Error(`Could not reach Gemini. Check your connection. (${error.message})`);
     }
 
-    const content = response?.text;
+    const candidate = response?.candidates?.[0];
+    const content = extractText(candidate);
     if (content) {
       return normalizeRecipe(extractJson(content));
     }
 
-    const candidate = response?.candidates?.[0];
     const partKinds = (candidate?.content?.parts ?? []).map((part) => Object.keys(part).join('+'));
     lastReason =
       response?.promptFeedback?.blockReason ||
