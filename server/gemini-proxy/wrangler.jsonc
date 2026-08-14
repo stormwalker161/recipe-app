@@ -13,7 +13,7 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -31,7 +31,11 @@
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 */
-	// "vars": {  "MY_VARIABLE": "production_value" }
+	"vars": {
+		"SUPABASE_URL": "https://znonvclsudtpkwomeaid.supabase.co"
+	}
+	// GEMINI_API_KEY and SUPABASE_SERVICE_ROLE_KEY are secrets, set via
+	// `wrangler secret put <NAME>` -- never put those values here.
 	/**
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings

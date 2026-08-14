@@ -46,19 +46,25 @@ export default function EditRecipeScreen({ route, navigation }) {
     );
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       setError('Please enter a title for your recipe.');
       return;
     }
 
-    updateRecipe(id, {
+    await updateRecipe(id, {
       title: title.trim(),
       category,
       prepTime: prepTime.trim(),
       ingredients: fromMultilineText(ingredientsText),
       instructions: fromMultilineText(instructionsText),
     });
+
+    const latestError = useRecipeStore.getState().error;
+    if (latestError) {
+      setError(latestError);
+      return;
+    }
 
     navigation.goBack();
   };

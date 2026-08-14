@@ -1,4 +1,5 @@
 import { CATEGORIES } from '../store/useRecipeStore';
+import { supabase } from './supabase';
 
 // All Gemini calls go through a Cloudflare Worker proxy instead of Google's
 // API directly. The real API key lives only as a secret on that Worker --
@@ -6,10 +7,13 @@ import { CATEGORIES } from '../store/useRecipeStore';
 // GitHub secret scanning, or APK decompiling (unlike a raw EXPO_PUBLIC_ key).
 const PROXY_BASE_URL =
   process.env.EXPO_PUBLIC_GEMINI_PROXY_URL || 'https://gemini-proxy.stormwalker161.workers.dev';
-// gemini-2.5-flash is restricted for newly-created API keys ahead of its Oct
-// 2026 retirement. gemini-1.5-flash and gemini-2.0-flash are fully shut down
-// (not just new-user-restricted), so gemini-3.6-flash is the current GA model.
-const MODEL = 'gemini-3.6-flash';
+// gemini-2.5-flash/-lite are restricted for newly-created API keys ahead of
+// their Oct 2026 retirement, and gemini-1.5-flash/gemini-2.0-flash are fully
+// shut down. gemini-3.6-flash works, but as a newer "thinking" model its free
+// tier daily quota is only ~20 requests/day (vs. the usual ~1,000+ for a
+// "Flash-Lite" tier model) -- far too low for real usage, so we use the
+// Flash-Lite variant instead for a much larger daily allowance.
+const MODEL = 'gemini-3.5-flash-lite';
 const MAX_PAGE_TEXT_LENGTH = 12000;
 
 const SYSTEM_PROMPT = `You are a recipe-parsing assistant. Always respond with STRICT JSON only -- no markdown, no code fences, no commentary -- matching exactly this shape:
@@ -157,13 +161,29 @@ function toRestContents(contents) {
   return [{ role: 'user', parts: contents }];
 }
 
-// The Gemini free tier allows only a small number of requests per minute
-// (independent from -- and much lower than -- the daily/monthly quota shown
-// as a percentage in Google's dashboard). Heavy testing or several imports
-// in quick succession can trip this even when overall usage looks low.
-// Google's 429 response includes a suggested wait time, so auto-retry once
-// after that delay instead of failing outright for a purely transient limit.
+// The Gemini free tier enforces both a per-minute limit (RPM) and a much
+// stricter per-day limit (RPD) -- and Google's 429 response looks identical
+// either way, including a short suggested "retryDelay" even when the *daily*
+// cap is what got hit. Blindly waiting-and-retrying on every 429 makes a
+// daily-quota failure look like it's stuck in a loop: the user waits the
+// suggested ~30-60s, retries, gets the exact same 429 with another short
+// delay, and repeats indefinitely -- because a daily quota only resets at
+// midnight Pacific, no amount of short waits will ever fix it. The `quotaId`
+// in the error body is what actually distinguishes the two cases, so check
+// that before deciding whether a retry can possibly help.
 const MAX_AUTO_RETRY_DELAY_SECONDS = 65;
+
+function getQuotaViolationIds(errorBody) {
+  const details = errorBody?.error?.details ?? [];
+  const quotaFailure = details.find((detail) => detail['@type']?.includes('QuotaFailure'));
+  return (quotaFailure?.violations ?? []).map((violation) => violation.quotaId || '');
+}
+
+function isDailyQuotaError(errorBody) {
+  return getQuotaViolationIds(errorBody).some(
+    (quotaId) => /perday|daily/i.test(quotaId)
+  );
+}
 
 function extractRetryDelaySeconds(errorBody) {
   const details = errorBody?.error?.details ?? [];
@@ -177,22 +197,36 @@ function sleep(ms) {
 }
 
 async function requestGeminiOnce(contents, { temperature, systemInstruction }, allowRateLimitRetry = true) {
+  // The proxy Worker requires proof of a signed-in, approved account before
+  // it will spend any of the shared Gemini quota on this request -- see
+  // server/gemini-proxy/src/index.ts. Without this header it responds 401.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('You must be signed in to use AI recipe import.');
+  }
+
   let response;
   try {
     response = await fetch(`${PROXY_BASE_URL}/v1beta/models/${MODEL}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: JSON.stringify({
         contents: toRestContents(contents),
         systemInstruction: { parts: [{ text: systemInstruction }] },
         generationConfig: {
           responseMimeType: 'application/json',
           temperature,
-          // gemini-3.6-flash is a "thinking" model that can burn its entire
-          // output budget on internal reasoning before ever writing the final
-          // JSON answer, which surfaces as an empty response with no error.
-          // Recipe extraction doesn't need deep reasoning, so keep thinking
-          // minimal to leave the budget for the actual answer.
+          // Some Gemini models are "thinking" models that can burn their
+          // entire output budget on internal reasoning before ever writing
+          // the final JSON answer, which surfaces as an empty response with
+          // no error. Recipe extraction doesn't need deep reasoning, so keep
+          // thinking minimal to leave the budget for the actual answer.
           thinkingConfig: { thinkingLevel: 'LOW' },
         },
       }),
@@ -203,11 +237,19 @@ async function requestGeminiOnce(contents, { temperature, systemInstruction }, a
 
   const data = await response.json().catch(() => null);
 
-  if (response.status === 429 && allowRateLimitRetry) {
-    const retryDelaySeconds = extractRetryDelaySeconds(data);
-    if (retryDelaySeconds != null && retryDelaySeconds <= MAX_AUTO_RETRY_DELAY_SECONDS) {
-      await sleep((retryDelaySeconds + 1) * 1000);
-      return requestGeminiOnce(contents, { temperature, systemInstruction }, false);
+  if (response.status === 429) {
+    if (isDailyQuotaError(data)) {
+      throw new Error(
+        "You've used up Gemini's free daily limit for today. This resets at midnight Pacific Time -- waiting a few minutes won't help, but it will work again after the reset (or you can try again tomorrow)."
+      );
+    }
+
+    if (allowRateLimitRetry) {
+      const retryDelaySeconds = extractRetryDelaySeconds(data);
+      if (retryDelaySeconds != null && retryDelaySeconds <= MAX_AUTO_RETRY_DELAY_SECONDS) {
+        await sleep((retryDelaySeconds + 1) * 1000);
+        return requestGeminiOnce(contents, { temperature, systemInstruction }, false);
+      }
     }
   }
 

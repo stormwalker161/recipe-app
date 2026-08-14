@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
@@ -9,12 +9,27 @@ import {
   selectSortedRecipes,
   useRecipeStore,
 } from '../store/useRecipeStore';
+import { supabase } from '../utils/supabase';
 
 const FILTERS = ['All', ...CATEGORIES];
 
 export default function HomeScreen({ navigation }) {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => supabase.auth.signOut()}
+          style={styles.headerLogoutButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.headerLogoutText}>Log Out</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   // selectSortedRecipes/selectRecipesByCategory build a fresh sorted array on every
   // call, so they must be wrapped in useShallow -- otherwise React's external store
@@ -199,5 +214,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     lineHeight: 32,
     fontWeight: '400',
+  },
+  headerLogoutButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerLogoutText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF6B4A',
   },
 });

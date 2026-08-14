@@ -84,7 +84,7 @@ export default function AddRecipeScreen({ navigation }) {
 
     try {
       const recipe = await parseRecipeFromText(trimmedUrl);
-      addRecipe(recipe);
+      await addRecipe(recipe);
       setUrlInput('');
       navigation.goBack();
     } catch (error) {
@@ -161,7 +161,7 @@ export default function AddRecipeScreen({ navigation }) {
       const recipe = await parseRecipeFromImage(
         photos.map((photo) => ({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' }))
       );
-      addRecipe({ ...recipe, imageUri: photos[0].uri });
+      await addRecipe({ ...recipe, imageUri: photos[0].uri });
       navigation.goBack();
     } catch (error) {
       showBanner('error', 'Scan Failed', error.message || 'Something went wrong scanning that recipe.');
@@ -196,7 +196,7 @@ export default function AddRecipeScreen({ navigation }) {
       base64Pdf = base64Pdf.replace(/^data:application\/pdf;base64,/, '');
 
       const recipe = await parseRecipeFromPdf(base64Pdf);
-      addRecipe(recipe);
+      await addRecipe(recipe);
       navigation.goBack();
     } catch (error) {
       showBanner('error', 'PDF Import Failed', error.message || 'Something went wrong reading that PDF.');
@@ -216,7 +216,7 @@ export default function AddRecipeScreen({ navigation }) {
     manual: handleTypeManually,
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       showBanner('error', 'Missing Title', 'Please enter a title for your recipe.');
       return;
@@ -232,22 +232,26 @@ export default function AddRecipeScreen({ navigation }) {
       .map((item) => item.trim())
       .filter(Boolean);
 
-    addRecipe({
-      title: title.trim(),
-      category,
-      prepTime: prepTime.trim(),
-      ingredients: ingredientList,
-      instructions: instructionList,
-      imageUri: null,
-    });
+    try {
+      await addRecipe({
+        title: title.trim(),
+        category,
+        prepTime: prepTime.trim(),
+        ingredients: ingredientList,
+        instructions: instructionList,
+        imageUri: null,
+      });
 
-    setTitle('');
-    setCategory(CATEGORIES[0]);
-    setPrepTime('');
-    setIngredients('');
-    setInstructions('');
+      setTitle('');
+      setCategory(CATEGORIES[0]);
+      setPrepTime('');
+      setIngredients('');
+      setInstructions('');
 
-    navigation.goBack();
+      navigation.goBack();
+    } catch (error) {
+      showBanner('error', 'Save Failed', error.message || 'Something went wrong saving that recipe.');
+    }
   };
 
   return (

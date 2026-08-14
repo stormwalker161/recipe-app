@@ -1,97 +1,154 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { supabase } from '../utils/supabase';
 
 export const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Dessert'];
 
-const mockRecipes = [
-  {
-    id: 'mock-1',
-    title: 'Spaghetti Carbonara',
-    category: 'Dinner',
-    prepTime: '25 min',
-    imageUri: null,
-    ingredients: ['Spaghetti', 'Eggs', 'Pancetta', 'Parmesan', 'Black pepper'],
-    instructions: [
-      'Cook spaghetti until al dente.',
-      'Fry pancetta until crisp.',
-      'Whisk eggs and parmesan together.',
-      'Combine pasta, pancetta, and egg mixture off the heat.',
-    ],
-    createdAt: '2026-08-10T09:00:00.000Z',
-  },
-  {
-    id: 'mock-2',
-    title: 'Avocado Toast',
-    category: 'Breakfast',
-    prepTime: '10 min',
-    imageUri: null,
-    ingredients: ['Sourdough bread', 'Avocado', 'Lemon juice', 'Chili flakes', 'Salt'],
-    instructions: [
-      'Toast the bread.',
-      'Mash avocado with lemon juice and salt.',
-      'Spread on toast and top with chili flakes.',
-    ],
-    createdAt: '2026-08-11T09:00:00.000Z',
-  },
-  {
-    id: 'mock-3',
-    title: 'Chocolate Chip Cookies',
-    category: 'Dessert',
-    prepTime: '35 min',
-    imageUri: null,
-    ingredients: ['Flour', 'Butter', 'Brown sugar', 'Chocolate chips', 'Eggs'],
-    instructions: [
-      'Cream butter and sugar together.',
-      'Mix in eggs, then fold in flour and chocolate chips.',
-      'Bake at 350°F (175°C) for 10-12 minutes.',
-    ],
-    createdAt: '2026-08-12T09:00:00.000Z',
-  },
-];
+// The `recipes` table uses snake_case columns; the rest of the app works
+// with the camelCase shape it always has, so translate at the store boundary
+// instead of leaking Postgres column names into every screen.
+function rowToRecipe(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    prepTime: row.prep_time ?? '',
+    imageUri: row.image_uri ?? null,
+    ingredients: row.ingredients ?? [],
+    instructions: row.instructions ?? [],
+    createdAt: row.created_at,
+  };
+}
 
-// Persisted to AsyncStorage so recipes survive force-closing/reopening the
-// app -- without this, Zustand state only lives in memory for the life of
-// the JS process, and every relaunch would reset back to the seed mock data.
-export const useRecipeStore = create(
-  persist(
-    (set) => ({
-      recipes: mockRecipes,
+// Postgres text/jsonb columns reject the literal NUL byte outright (insert
+// fails with "unsupported Unicode escape sequence"), and OCR output from the
+// "Scan Handwritten Recipe" flow occasionally slips one in from garbled scan
+// artifacts. Strip control characters everywhere before they ever reach
+// Supabase so a single bad character can't silently kill the whole insert.
+function sanitizeText(value) {
+  if (typeof value !== 'string') return value;
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+}
 
-      addRecipe: (recipe) =>
-        set((state) => ({
-          recipes: [
-            ...state.recipes,
-            {
-              id: recipe.id ?? Date.now().toString(),
-              createdAt: recipe.createdAt ?? new Date().toISOString(),
-              ...recipe,
-            },
-          ],
-        })),
+function sanitizeList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(sanitizeText).filter(Boolean);
+}
 
-      deleteRecipe: (id) =>
-        set((state) => ({
-          recipes: state.recipes.filter((recipe) => recipe.id !== id),
-        })),
+function recipeToRow(recipe, userId) {
+  return {
+    user_id: userId,
+    title: sanitizeText(recipe.title),
+    category: recipe.category,
+    prep_time: sanitizeText(recipe.prepTime) ?? '',
+    image_uri: recipe.imageUri ?? null,
+    ingredients: sanitizeList(recipe.ingredients),
+    instructions: sanitizeList(recipe.instructions),
+  };
+}
 
-      updateRecipe: (id, updates) =>
-        set((state) => ({
-          recipes: state.recipes.map((recipe) =>
-            recipe.id === id ? { ...recipe, ...updates } : recipe
-          ),
-        })),
-    }),
-    {
-      name: 'recipe-app-storage',
-      storage: createJSONStorage(() => AsyncStorage),
-      // Only the recipes themselves need to survive a restart -- actions are
-      // functions and get re-created fresh from the store definition above
-      // every launch, so persisting them would be wasted/invalid storage.
-      partialize: (state) => ({ recipes: state.recipes }),
+// Recipes now live in Supabase (scoped to the signed-in user via row-level
+// security), not local-only storage -- this is what makes them show up the
+// same way on every device you log into instead of being stuck on whichever
+// device/browser first created them.
+export const useRecipeStore = create((set, get) => ({
+  recipes: [],
+  isLoading: false,
+  error: null,
+
+  /** Loads the current user's recipes from Supabase. Call after sign-in. */
+  fetchRecipes: async () => {
+    set({ isLoading: true, error: null });
+
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      set({ isLoading: false, error: error.message });
+      return;
     }
-  )
-);
+
+    set({ recipes: (data ?? []).map(rowToRecipe), isLoading: false });
+  },
+
+  /** Clears local state. Call on sign-out so the next login starts fresh. */
+  clearRecipes: () => set({ recipes: [], error: null }),
+
+  addRecipe: async (recipe) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      console.warn('Cannot add a recipe while signed out.');
+      return;
+    }
+
+    // The `recipes.id` column is text with no default, so an id must always
+    // be supplied on insert -- generate it client-side up front and reuse it
+    // for both the optimistic local entry and the actual row, rather than
+    // relying on a server-assigned id that was never going to exist.
+    const id = recipe.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const createdAt = recipe.createdAt ?? new Date().toISOString();
+    const cleanRecipe = {
+      ...recipe,
+      title: sanitizeText(recipe.title),
+      prepTime: sanitizeText(recipe.prepTime),
+      ingredients: sanitizeList(recipe.ingredients),
+      instructions: sanitizeList(recipe.instructions),
+    };
+
+    set((state) => ({
+      recipes: [...state.recipes, { ...cleanRecipe, id, createdAt }],
+    }));
+
+    const { error } = await supabase
+      .from('recipes')
+      .insert({ id, ...recipeToRow(cleanRecipe, user.id) });
+
+    if (error) {
+      console.warn('Failed to save recipe to Supabase:', error.message);
+      set((state) => ({
+        recipes: state.recipes.filter((item) => item.id !== id),
+        error: error.message,
+      }));
+      throw error;
+    }
+  },
+
+  deleteRecipe: async (id) => {
+    const previousRecipes = get().recipes;
+    set((state) => ({ recipes: state.recipes.filter((recipe) => recipe.id !== id) }));
+
+    const { error } = await supabase.from('recipes').delete().eq('id', id);
+    if (error) {
+      console.warn('Failed to delete recipe from Supabase:', error.message);
+      set({ recipes: previousRecipes, error: error.message });
+    }
+  },
+
+  updateRecipe: async (id, updates) => {
+    const previousRecipes = get().recipes;
+    set((state) => ({
+      recipes: state.recipes.map((recipe) => (recipe.id === id ? { ...recipe, ...updates } : recipe)),
+    }));
+
+    const row = {};
+    if (updates.title !== undefined) row.title = sanitizeText(updates.title);
+    if (updates.category !== undefined) row.category = updates.category;
+    if (updates.prepTime !== undefined) row.prep_time = sanitizeText(updates.prepTime);
+    if (updates.imageUri !== undefined) row.image_uri = updates.imageUri;
+    if (updates.ingredients !== undefined) row.ingredients = sanitizeList(updates.ingredients);
+    if (updates.instructions !== undefined) row.instructions = sanitizeList(updates.instructions);
+
+    const { error } = await supabase.from('recipes').update(row).eq('id', id);
+    if (error) {
+      console.warn('Failed to update recipe in Supabase:', error.message);
+      set({ recipes: previousRecipes, error: error.message });
+    }
+  },
+}));
 
 /**
  * Selector factory: returns a single recipe by id, or undefined if it no
