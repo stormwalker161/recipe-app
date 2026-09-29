@@ -16,6 +16,16 @@ const PROXY_BASE_URL =
 const MODEL = 'gemini-3.5-flash-lite';
 const MAX_PAGE_TEXT_LENGTH = 12000;
 
+// Free, keyless search over openly-licensed photos (Flickr, Wikimedia
+// Commons, museum collections, etc.) -- used to find an existing photo of a
+// dish for recipes that don't have one of their own yet, instead of
+// generating a new image. (Gemini's own image-generation models turned out
+// to have a hard free-tier quota of zero -- `limit: 0` -- so actually
+// generating a photo would require enabling billing; searching for an
+// already-existing one sidesteps that entirely, and it's what was asked
+// for anyway.)
+const OPENVERSE_SEARCH_URL = 'https://api.openverse.org/v1/images/';
+
 const SYSTEM_PROMPT = `You are a recipe-parsing assistant. Always respond with STRICT JSON only -- no markdown, no code fences, no commentary -- matching exactly this shape:
 
 {
@@ -69,7 +79,7 @@ async function fetchDirect(url) {
     throw new Error('Could not find any readable text on that page.');
   }
 
-  return text;
+  return { text, imageUrl: extractImageUrlFromHtml(html, url) };
 }
 
 async function fetchViaReaderProxy(url) {
@@ -85,27 +95,120 @@ async function fetchViaReaderProxy(url) {
     throw new Error('Could not find any readable text on that page.');
   }
 
-  return text;
+  // This proxy renders the page and returns clean Markdown rather than raw
+  // HTML, so there's no <meta>/JSON-LD to read -- but it keeps real image
+  // links as Markdown `![alt](url)` syntax, which is enough to still find
+  // the article's own photo.
+  return { text, imageUrl: extractImageUrlFromMarkdown(text, url) };
 }
 
-async function fetchPageText(url) {
+async function fetchPageContent(url) {
   let lastError;
 
   try {
-    const text = await fetchDirect(url);
-    return text.slice(0, MAX_PAGE_TEXT_LENGTH);
+    const { text, imageUrl } = await fetchDirect(url);
+    return { text: text.slice(0, MAX_PAGE_TEXT_LENGTH), imageUrl };
   } catch (error) {
     lastError = error;
   }
 
   try {
-    const text = await fetchViaReaderProxy(url);
-    return text.slice(0, MAX_PAGE_TEXT_LENGTH);
+    const { text, imageUrl } = await fetchViaReaderProxy(url);
+    return { text: text.slice(0, MAX_PAGE_TEXT_LENGTH), imageUrl };
   } catch (error) {
     throw new Error(
       `Could not read that page. It may be blocking automated access, or the link may be incorrect. (${lastError.message})`
     );
   }
+}
+
+function resolveUrl(maybeUrl, baseUrl) {
+  if (!maybeUrl || typeof maybeUrl !== 'string') return null;
+  try {
+    return new URL(maybeUrl.trim(), baseUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort extraction of the "hero" photo a recipe website already has
+ * for its own dish -- far more reliable to reuse than generating a new one,
+ * and it's literally the photo of the food the author actually made.
+ *
+ * Tries, in order of reliability for recipe pages specifically:
+ *  1. Schema.org Recipe structured data (a JSON-LD `<script>` block with
+ *     "@type": "Recipe") -- its `image` field is the dish photo itself,
+ *     not a logo or unrelated banner image.
+ *  2. The Open Graph `og:image` meta tag.
+ *  3. The `twitter:image` meta tag.
+ * Returns an absolute URL, or `null` if nothing usable was found. Only
+ * usable when raw HTML is available (the direct-fetch path, not the
+ * reader-proxy fallback -- see extractImageUrlFromMarkdown for that case).
+ */
+function extractImageUrlFromHtml(html, baseUrl) {
+  const resolve = (maybeUrl) => resolveUrl(maybeUrl, baseUrl);
+
+  const jsonLdBlocks = html.matchAll(
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  );
+  for (const block of jsonLdBlocks) {
+    let parsed;
+    try {
+      parsed = JSON.parse(block[1].trim());
+    } catch {
+      continue; // Malformed JSON-LD is common enough in the wild; skip it.
+    }
+    const nodes = Array.isArray(parsed) ? parsed : [parsed, ...(parsed?.['@graph'] || [])];
+    for (const node of nodes) {
+      const types = [].concat(node?.['@type'] || []);
+      if (!types.some((t) => String(t).toLowerCase() === 'recipe')) continue;
+
+      const image = node.image;
+      const imageValue = Array.isArray(image) ? image[0] : image?.url ?? image;
+      const resolved = resolve(imageValue);
+      if (resolved) return resolved;
+    }
+  }
+
+  const ogMatch =
+    /<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i.exec(
+      html
+    ) ||
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image(?::secure_url)?["']/i.exec(
+      html
+    );
+  if (ogMatch) return resolve(ogMatch[1]);
+
+  const twitterMatch = /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i.exec(html);
+  if (twitterMatch) return resolve(twitterMatch[1]);
+
+  return null;
+}
+
+// Filenames/URLs/alt-text matching this are almost always site chrome (logos,
+// icons, tracking pixels, ads) rather than an actual photo of the dish.
+const NON_PHOTO_IMAGE_PATTERN = /logo|icon|avatar|sprite|pixel|placeholder|spinner|badge/i;
+
+/**
+ * Same goal as extractImageUrlFromHtml, but for when only rendered Markdown
+ * is available (the r.jina.ai reader-proxy fallback, used whenever a direct
+ * fetch is CORS-blocked -- the common case for a web build calling most
+ * recipe sites). The reader keeps real photos as Markdown image syntax
+ * (`![alt](url)`), so pick the first one that looks like an actual content
+ * photo rather than a lazy-load placeholder or site chrome.
+ */
+function extractImageUrlFromMarkdown(markdown, baseUrl) {
+  for (const match of markdown.matchAll(/!\[([^\]]*)\]\(([^)\s]+)/g)) {
+    const [, alt, rawUrl] = match;
+    if (/^(blob|data):/i.test(rawUrl)) continue; // Lazy-load placeholders.
+    if (/\.svg(\?|$)/i.test(rawUrl)) continue; // Icons, not photos.
+    if (NON_PHOTO_IMAGE_PATTERN.test(alt) || NON_PHOTO_IMAGE_PATTERN.test(rawUrl)) continue;
+
+    const resolved = resolveUrl(rawUrl, baseUrl);
+    if (resolved) return resolved;
+  }
+  return null;
 }
 
 function extractJson(content) {
@@ -322,7 +425,14 @@ export async function parseRecipeFromText(input) {
   const trimmedInput = input.trim();
   const isUrl = /^https?:\/\//i.test(trimmedInput);
 
-  const sourceText = isUrl ? await fetchPageText(trimmedInput) : trimmedInput;
+  let sourceText = trimmedInput;
+  let imageUri = null;
+
+  if (isUrl) {
+    const { text, imageUrl } = await fetchPageContent(trimmedInput);
+    sourceText = text;
+    imageUri = imageUrl;
+  }
 
   if (!sourceText) {
     throw new Error('Please paste some recipe text or a valid URL.');
@@ -332,7 +442,15 @@ export async function parseRecipeFromText(input) {
     ? `Extract the recipe from the following webpage text (scraped from ${trimmedInput}):\n\n${sourceText}`
     : `Extract the recipe from the following text:\n\n${sourceText}`;
 
-  return callGemini(promptText);
+  const recipe = await callGemini(promptText);
+
+  // Prefer the website's own photo of the dish; only fall back to a search
+  // if the page didn't have a usable image.
+  if (!imageUri) {
+    imageUri = await findFoodPhotoOnline(recipe);
+  }
+
+  return { ...recipe, imageUri };
 }
 
 /**
@@ -387,4 +505,92 @@ export async function parseRecipeFromPdf(base64Pdf) {
       },
     },
   ]);
+}
+
+// Titles/URLs/descriptions containing these words are essentially never an
+// appetizing, presentable photo of a finished dish (stock "food porn" sites
+// get scraped into Openverse's index too, alongside unrelated illustrations,
+// menus, and clip art) -- skip them rather than attaching something odd.
+const NON_FOOD_PHOTO_HINT_PATTERN = /clip ?art|illustration|menu|logo|icon|drawing|cartoon/i;
+
+// Ignore short/common words when scoring how well a search result's title
+// matches the recipe -- otherwise something generic like "food" or "dish"
+// would count as a "match" against literally every candidate.
+const TITLE_STOP_WORDS = new Set([
+  'a', 'an', 'the', 'with', 'and', 'or', 'of', 'in', 'on', 'for', 'to',
+  'food', 'dish', 'recipe', 'breakfast', 'lunch', 'dinner', 'snacks', 'snack', 'dessert',
+]);
+
+function titleKeywords(title) {
+  return (title || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length > 2 && !TITLE_STOP_WORDS.has(word));
+}
+
+/**
+ * Best-effort: searches the open web for an existing, openly-licensed photo
+ * that matches the recipe (by title + category), for recipes that don't
+ * have a real photo of their own yet -- a scanned handwritten card, a PDF
+ * import, a manually-typed recipe with no photo attached, or a website
+ * import whose page had no image of its own -- instead of leaving a plain
+ * placeholder (and, for the "Scan Handwritten Recipe" flow, instead of using
+ * the photo of the paper itself, which is what the camera capture is
+ * actually a picture of).
+ *
+ * Uses Openverse, a free/keyless search engine over Creative-Commons-
+ * licensed photos, rather than generating a new image -- Gemini's own image
+ * models turned out to require paid billing (their free tier's image-
+ * generation quota is zero), and pulling in an existing real photo is what
+ * was actually wanted anyway.
+ *
+ * Returns an image URL (left as an external link, same as a website's own
+ * photo -- see recipeImages.js), or `null` if nothing relevant was found or
+ * the search failed for any reason. Never throws: a missing "nice to have"
+ * photo should never block saving the actual recipe.
+ */
+export async function findFoodPhotoOnline(recipe) {
+  try {
+    const title = (recipe?.title || '').trim();
+    if (!title || title.toLowerCase() === 'untitled recipe') return null;
+
+    const query = `${title} ${recipe?.category || ''} food dish`.trim();
+    const searchUrl = `${OPENVERSE_SEARCH_URL}?${new URLSearchParams({
+      q: query,
+      page_size: '6',
+      mature: 'false',
+    })}`;
+
+    const response = await fetch(searchUrl);
+    if (!response.ok) return null;
+
+    const data = await response.json().catch(() => null);
+    const results = data?.results ?? [];
+
+    const candidates = results.filter((result) => {
+      if (typeof result?.url !== 'string' || !result.url) return false;
+      const haystack = `${result.title || ''} ${result.url}`;
+      return !NON_FOOD_PHOTO_HINT_PATTERN.test(haystack);
+    });
+    if (candidates.length === 0) return null;
+
+    // Openverse ranks by its own relevance/popularity signals, which often
+    // surface something generically food-adjacent (e.g. a "what we've been
+    // cooking" roundup collage) ahead of a result whose title actually
+    // names the dish. Re-rank by how many of the recipe's own title words
+    // (e.g. "salmon", "asparagus") show up in each candidate's title, and
+    // only fall back to Openverse's original order among ties.
+    const keywords = titleKeywords(title);
+    const scored = candidates.map((result, index) => {
+      const resultTitle = (result.title || '').toLowerCase();
+      const score = keywords.filter((word) => resultTitle.includes(word)).length;
+      return { result, score, index };
+    });
+    scored.sort((a, b) => b.score - a.score || a.index - b.index);
+
+    return scored[0].result.url;
+  } catch (error) {
+    console.warn('Failed to find a food photo online:', error.message);
+    return null;
+  }
 }

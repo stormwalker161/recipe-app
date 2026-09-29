@@ -18,7 +18,12 @@ import {
 import RecipePhotoPicker from '../components/RecipePhotoPicker';
 import { CATEGORIES, useRecipeStore } from '../store/useRecipeStore';
 import { useThemeColors } from '../theme/ThemeContext';
-import { parseRecipeFromImage, parseRecipeFromPdf, parseRecipeFromText } from '../utils/aiParser';
+import {
+  findFoodPhotoOnline,
+  parseRecipeFromImage,
+  parseRecipeFromPdf,
+  parseRecipeFromText,
+} from '../utils/aiParser';
 
 const BANNER_DURATION_MS = 5000;
 
@@ -166,7 +171,15 @@ export default function AddRecipeScreen({ navigation }) {
       const recipe = await parseRecipeFromImage(
         photos.map((photo) => ({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' }))
       );
-      await addRecipe({ ...recipe, imageUri: photos[0].uri });
+
+      // Deliberately NOT `photos[0].uri` -- that's a picture of the paper
+      // recipe card itself, not the finished dish. Look for a real photo of
+      // the dish online instead (best-effort; recipe still saves fine if
+      // nothing is found, just without a photo).
+      setProcessingLabel('Finding a photo of your dish…');
+      const imageUri = await findFoodPhotoOnline(recipe);
+
+      await addRecipe({ ...recipe, imageUri });
       navigation.goBack();
     } catch (error) {
       showBanner('error', 'Scan Failed', error.message || 'Something went wrong scanning that recipe.');
@@ -201,7 +214,11 @@ export default function AddRecipeScreen({ navigation }) {
       base64Pdf = base64Pdf.replace(/^data:application\/pdf;base64,/, '');
 
       const recipe = await parseRecipeFromPdf(base64Pdf);
-      await addRecipe(recipe);
+
+      setProcessingLabel('Finding a photo of your dish…');
+      const imageUri = await findFoodPhotoOnline(recipe);
+
+      await addRecipe({ ...recipe, imageUri });
       navigation.goBack();
     } catch (error) {
       showBanner('error', 'PDF Import Failed', error.message || 'Something went wrong reading that PDF.');
@@ -238,13 +255,27 @@ export default function AddRecipeScreen({ navigation }) {
       .filter(Boolean);
 
     try {
+      let finalImageUri = photoUri;
+
+      // Only bother searching for one if the user didn't already attach a
+      // real photo themselves -- their own photo always wins.
+      if (!finalImageUri) {
+        setIsProcessing(true);
+        setProcessingLabel('Finding a photo of your dish…');
+        finalImageUri = await findFoodPhotoOnline({
+          title: title.trim(),
+          category,
+          ingredients: ingredientList,
+        });
+      }
+
       await addRecipe({
         title: title.trim(),
         category,
         prepTime: prepTime.trim(),
         ingredients: ingredientList,
         instructions: instructionList,
-        imageUri: photoUri,
+        imageUri: finalImageUri,
       });
 
       setTitle('');
@@ -257,6 +288,8 @@ export default function AddRecipeScreen({ navigation }) {
       navigation.goBack();
     } catch (error) {
       showBanner('error', 'Save Failed', error.message || 'Something went wrong saving that recipe.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
