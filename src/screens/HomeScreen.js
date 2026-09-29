@@ -20,13 +20,22 @@ export default function HomeScreen({ navigation }) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity
-          onPress={() => supabase.auth.signOut()}
-          style={styles.headerLogoutButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.headerLogoutText}>Log Out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Grocery')}
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.headerIcon}>🛒</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => supabase.auth.signOut()}
+            style={styles.headerLogoutButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.headerLogoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
       ),
     });
   }, [navigation]);
@@ -214,6 +223,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     lineHeight: 32,
     fontWeight: '400',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerIcon: {
+    fontSize: 20,
   },
   headerLogoutButton: {
     paddingHorizontal: 8,

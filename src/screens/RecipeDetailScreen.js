@@ -1,7 +1,19 @@
-import React, { useLayoutEffect, useState } from 'react';
-import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { addGroceryItems } from '../services/grocery';
 import { selectRecipeById, useRecipeStore } from '../store/useRecipeStore';
 import { SERVING_MULTIPLIERS, scaleIngredientText } from '../utils/servingScaler';
+
+const BANNER_DURATION_MS = 4000;
 
 export default function RecipeDetailScreen({ route, navigation }) {
   const { id } = route.params;
@@ -10,6 +22,22 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
   const [servingMultiplier, setServingMultiplier] = useState(1);
+  const [isAddingToGroceryList, setIsAddingToGroceryList] = useState(false);
+
+  // Alert.alert() is a silent no-op on web, so status messages go through
+  // this in-app banner instead -- same pattern as AddRecipeScreen.
+  const [banner, setBanner] = useState(null);
+  const bannerTimeoutRef = useRef(null);
+
+  const showBanner = (type, title, message) => {
+    clearTimeout(bannerTimeoutRef.current);
+    setBanner({ type, title, message });
+    bannerTimeoutRef.current = setTimeout(() => setBanner(null), BANNER_DURATION_MS);
+  };
+
+  useEffect(() => {
+    return () => clearTimeout(bannerTimeoutRef.current);
+  }, []);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -34,6 +62,28 @@ export default function RecipeDetailScreen({ route, navigation }) {
     navigation.goBack();
   };
 
+  const handleAddToGroceryList = async () => {
+    if (!recipe?.ingredients?.length) return;
+
+    setIsAddingToGroceryList(true);
+    try {
+      const added = await addGroceryItems(recipe.ingredients);
+      showBanner(
+        'success',
+        'Added to Grocery List',
+        `${added.length} ingredient${added.length === 1 ? '' : 's'} added.`
+      );
+    } catch (error) {
+      showBanner(
+        'error',
+        'Couldn\u2019t Add Ingredients',
+        error.message || 'Something went wrong adding these ingredients.'
+      );
+    } finally {
+      setIsAddingToGroceryList(false);
+    }
+  };
+
   if (!recipe) {
     return (
       <View style={styles.missingContainer}>
@@ -50,6 +100,20 @@ export default function RecipeDetailScreen({ route, navigation }) {
   return (
     <View style={styles.flex}>
       <ScrollView contentContainerStyle={styles.container}>
+        {banner && (
+          <TouchableOpacity
+            style={[
+              styles.banner,
+              banner.type === 'error' ? styles.bannerError : styles.bannerSuccess,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => setBanner(null)}
+          >
+            <Text style={styles.bannerTitle}>{banner.title}</Text>
+            {!!banner.message && <Text style={styles.bannerMessage}>{banner.message}</Text>}
+          </TouchableOpacity>
+        )}
+
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.heroImage} resizeMode="cover" />
         ) : (
@@ -101,6 +165,21 @@ export default function RecipeDetailScreen({ route, navigation }) {
             ))
           ) : (
             <Text style={styles.emptyText}>No ingredients added yet.</Text>
+          )}
+
+          {ingredients && ingredients.length > 0 && (
+            <TouchableOpacity
+              style={styles.groceryButton}
+              activeOpacity={0.85}
+              onPress={handleAddToGroceryList}
+              disabled={isAddingToGroceryList}
+            >
+              {isAddingToGroceryList ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.groceryButtonText}>🛒 Add Ingredients to Grocery List</Text>
+              )}
+            </TouchableOpacity>
           )}
         </View>
 
@@ -292,6 +371,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9A9A9A',
     fontStyle: 'italic',
+  },
+  groceryButton: {
+    backgroundColor: '#FF6B4A',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  groceryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  banner: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  bannerError: {
+    backgroundColor: '#FDEAE6',
+    borderWidth: 1,
+    borderColor: '#F5C4B8',
+  },
+  bannerSuccess: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#A5D6A7',
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2B2B2B',
+    marginBottom: 2,
+  },
+  bannerMessage: {
+    fontSize: 13,
+    color: '#5A5A5A',
   },
   deleteButton: {
     borderRadius: 14,

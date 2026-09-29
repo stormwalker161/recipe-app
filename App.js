@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AddRecipeScreen from './src/screens/AddRecipeScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import EditRecipeScreen from './src/screens/EditRecipeScreen';
+import GroceryScreen from './src/screens/GroceryScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import PendingApprovalScreen from './src/screens/PendingApprovalScreen';
 import RecipeDetailScreen from './src/screens/RecipeDetailScreen';
@@ -98,6 +99,11 @@ export default function App() {
               name="EditRecipe"
               component={EditRecipeScreen}
               options={{ title: 'Edit Recipe', presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="Grocery"
+              component={GroceryScreen}
+              options={{ title: 'Grocery List' }}
             />
           </Stack.Navigator>
         ) : (
