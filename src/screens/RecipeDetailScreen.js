@@ -67,12 +67,25 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
     setIsAddingToGroceryList(true);
     try {
-      const added = await addGroceryItems(recipe.ingredients);
-      showBanner(
-        'success',
-        'Added to Grocery List',
-        `${added.length} ingredient${added.length === 1 ? '' : 's'} added.`
+      // Use the currently-selected serving multiplier so a 2x recipe adds
+      // "4 cups flour" to the grocery list, not the unscaled "2 cups flour"
+      // shown before the user picked a serving size.
+      const scaledIngredients = recipe.ingredients.map((item) =>
+        scaleIngredientText(item, servingMultiplier)
       );
+      const added = await addGroceryItems(scaledIngredients);
+      const mergedCount = added.filter((item) => item.wasMerged).length;
+      const newCount = added.length - mergedCount;
+
+      let message;
+      if (newCount && mergedCount) {
+        message = `${newCount} new item${newCount === 1 ? '' : 's'} added, ${mergedCount} combined with items already on your list.`;
+      } else if (mergedCount) {
+        message = `Combined with ${mergedCount} ingredient${mergedCount === 1 ? '' : 's'} already on your list.`;
+      } else {
+        message = `${newCount} ingredient${newCount === 1 ? '' : 's'} added.`;
+      }
+      showBanner('success', 'Added to Grocery List', message);
     } catch (error) {
       showBanner(
         'error',

@@ -58,7 +58,7 @@ const QUANTITY_PATTERNS = [
   },
 ];
 
-function parseLeadingQuantity(text) {
+export function parseLeadingQuantity(text) {
   const leadingWhitespace = text.match(/^\s*/)[0];
   const rest = text.slice(leadingWhitespace.length);
 
@@ -88,7 +88,7 @@ const COMMON_FRACTIONS = [
   [7 / 8, '7/8'],
 ];
 
-function formatQuantity(value) {
+export function formatQuantity(value) {
   const rounded = Math.round(value * 1000) / 1000;
   const whole = Math.floor(rounded);
   const fraction = rounded - whole;

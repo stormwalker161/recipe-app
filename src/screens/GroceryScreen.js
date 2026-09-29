@@ -68,15 +68,34 @@ export default function GroceryScreen() {
   );
 
   const handleAddItem = async () => {
+    // Validate inside the handler (instead of hard-disabling the button
+    // whenever the input looks empty) so every tap gets a visible response
+    // -- a stale render of `newIngredient` right after typing should never
+    // make the "+" button look like it's silently doing nothing.
     const ingredient = newIngredient.trim();
-    if (!ingredient) return;
+    if (!ingredient) {
+      showBanner('error', 'Please enter an item name.');
+      return;
+    }
 
     setIsAdding(true);
     try {
       const item = await addGroceryItem({ ingredient, amount: newAmount.trim() });
-      setItems((current) => [...current, item]);
+      // If this ingredient matched one already on the list, the service
+      // combines the amounts and returns that same row (same id) instead of
+      // creating a new one -- update it in place rather than appending a
+      // visual duplicate.
+      setItems((current) => {
+        const alreadyInList = current.some((existing) => existing.id === item.id);
+        return alreadyInList
+          ? current.map((existing) => (existing.id === item.id ? item : existing))
+          : [...current, item];
+      });
       setNewIngredient('');
       setNewAmount('');
+      if (item.wasMerged) {
+        showBanner('info', `Combined with "${item.ingredient}" already on your list.`);
+      }
     } catch (error) {
       showBanner('error', error.message || 'Could not add that item.');
     } finally {
@@ -205,10 +224,10 @@ export default function GroceryScreen() {
           returnKeyType="done"
         />
         <TouchableOpacity
-          style={[styles.addButton, (isAdding || !newIngredient.trim()) && styles.addButtonDisabled]}
+          style={[styles.addButton, isAdding && styles.addButtonDisabled]}
           onPress={handleAddItem}
           activeOpacity={0.85}
-          disabled={isAdding || !newIngredient.trim()}
+          disabled={isAdding}
         >
           {isAdding ? (
             <ActivityIndicator color="#fff" size="small" />
