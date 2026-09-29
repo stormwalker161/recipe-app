@@ -86,7 +86,15 @@ export default function EditRecipeScreen({ route, navigation }) {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Photo</Text>
-          <RecipePhotoPicker imageUri={photoUri} onChange={setPhotoUri} />
+          <RecipePhotoPicker
+            imageUri={photoUri}
+            onChange={setPhotoUri}
+            recipe={{
+              title,
+              category,
+              ingredients: fromMultilineText(ingredientsText),
+            }}
+          />
         </View>
 
         <View style={styles.formGroup}>

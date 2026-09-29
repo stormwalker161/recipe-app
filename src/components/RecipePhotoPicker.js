@@ -1,19 +1,57 @@
 import * as ImagePicker from 'expo-image-picker';
 import React, { useMemo, useState } from 'react';
-import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useThemeColors } from '../theme/ThemeContext';
+import { findFoodPhotoOnline } from '../utils/aiParser';
 
 /**
- * Tappable recipe photo preview + "take photo / choose from library / remove"
- * picker. Used by both Add and Edit Recipe screens so every recipe -- not
- * just ones captured via the handwritten-recipe scanner -- can have a photo.
- * `onChange(uri | null)` is called with a local device URI; the caller
- * (useRecipeStore) is responsible for uploading it to permanent storage.
+ * Tappable recipe photo preview + "take photo / choose from library / find
+ * online / remove" picker. Used by both Add and Edit Recipe screens so
+ * every recipe -- not just ones captured via the handwritten-recipe scanner,
+ * or freshly created ones -- can have a photo, including recipes already
+ * sitting in the library without one.
+ *
+ * `onChange(uri | null)` is called with either a local device URI or an
+ * external `https://` URL (from the online search); the caller
+ * (useRecipeStore) is responsible for uploading local ones to permanent
+ * storage and leaving external ones as direct links.
+ *
+ * `recipe` (optional) supplies the title/category/ingredients used to build
+ * the online photo search query -- without it, "Find Photo Online" is
+ * disabled, since there'd be nothing to search for yet.
  */
-export default function RecipePhotoPicker({ imageUri, onChange }) {
+export default function RecipePhotoPicker({ imageUri, onChange, recipe }) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
+
+  const canSearchOnline = !!recipe?.title?.trim();
+
+  const findPhotoOnline = async () => {
+    setIsPickerVisible(false);
+    setSearchMessage('');
+    setIsSearching(true);
+
+    const foundUri = await findFoodPhotoOnline(recipe);
+
+    setIsSearching(false);
+    if (foundUri) {
+      onChange(foundUri);
+    } else {
+      setSearchMessage("Couldn't find a matching photo online. Try again or add your own.");
+      setTimeout(() => setSearchMessage(''), 4000);
+    }
+  };
 
   const pickFromLibrary = async () => {
     setIsPickerVisible(false);
@@ -54,7 +92,12 @@ export default function RecipePhotoPicker({ imageUri, onChange }) {
 
   return (
     <>
-      <TouchableOpacity style={styles.wrapper} activeOpacity={0.85} onPress={() => setIsPickerVisible(true)}>
+      <TouchableOpacity
+        style={styles.wrapper}
+        activeOpacity={0.85}
+        disabled={isSearching}
+        onPress={() => setIsPickerVisible(true)}
+      >
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
         ) : (
@@ -63,10 +106,22 @@ export default function RecipePhotoPicker({ imageUri, onChange }) {
             <Text style={styles.placeholderText}>Add a Photo</Text>
           </View>
         )}
+        {isSearching && (
+          <View style={[styles.image, styles.searchingOverlay]}>
+            <ActivityIndicator color="#fff" />
+            <Text style={styles.searchingText}>Searching for a photo…</Text>
+          </View>
+        )}
         <View style={styles.editBadge}>
           <Text style={styles.editBadgeText}>{imageUri ? 'Change Photo' : 'Add Photo'}</Text>
         </View>
       </TouchableOpacity>
+
+      {!!searchMessage && (
+        <View style={styles.searchMessageBox}>
+          <Text style={styles.searchMessageText}>{searchMessage}</Text>
+        </View>
+      )}
 
       <Modal
         visible={isPickerVisible}
@@ -83,6 +138,18 @@ export default function RecipePhotoPicker({ imageUri, onChange }) {
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalOption} onPress={pickFromLibrary} activeOpacity={0.7}>
               <Text style={styles.modalOptionText}>🖼️ Choose from Library</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={findPhotoOnline}
+              activeOpacity={0.7}
+              disabled={!canSearchOnline}
+            >
+              <Text
+                style={[styles.modalOptionText, !canSearchOnline && styles.modalOptionDisabled]}
+              >
+                🔍 Find Photo Online
+              </Text>
             </TouchableOpacity>
             {!!imageUri && (
               <TouchableOpacity style={styles.modalOption} onPress={removePhoto} activeOpacity={0.7}>
@@ -129,6 +196,32 @@ function createStyles(colors) {
     placeholderText: {
       fontSize: 13,
       fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    searchingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.55)',
+    },
+    searchingText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '600',
+      marginTop: 8,
+    },
+    searchMessageBox: {
+      marginBottom: 16,
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    searchMessageText: {
+      fontSize: 12,
       color: colors.textSecondary,
     },
     editBadge: {
@@ -179,6 +272,9 @@ function createStyles(colors) {
     },
     modalOptionDanger: {
       color: colors.error,
+    },
+    modalOptionDisabled: {
+      color: colors.textMuted,
     },
     modalCancel: {
       marginTop: 6,

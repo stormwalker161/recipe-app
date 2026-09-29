@@ -338,7 +338,18 @@ export default function AddRecipeScreen({ navigation }) {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Photo</Text>
-          <RecipePhotoPicker imageUri={photoUri} onChange={setPhotoUri} />
+          <RecipePhotoPicker
+            imageUri={photoUri}
+            onChange={setPhotoUri}
+            recipe={{
+              title,
+              category,
+              ingredients: ingredients
+                .split(/,|\n/)
+                .map((item) => item.trim())
+                .filter(Boolean),
+            }}
+          />
         </View>
 
         <View style={styles.formGroup}>
