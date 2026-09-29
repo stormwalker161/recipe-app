@@ -1,7 +1,7 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AddRecipeScreen from './src/screens/AddRecipeScreen';
@@ -11,10 +11,20 @@ import GroceryScreen from './src/screens/GroceryScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import PendingApprovalScreen from './src/screens/PendingApprovalScreen';
 import RecipeDetailScreen from './src/screens/RecipeDetailScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import { useRecipeStore } from './src/store/useRecipeStore';
+import { ThemeProvider, useThemeColors } from './src/theme/ThemeContext';
 import { supabase } from './src/utils/supabase';
 
 const Stack = createNativeStackNavigator();
+
+function stackScreenOptions(colors) {
+  return {
+    headerStyle: { backgroundColor: colors.surface },
+    headerTintColor: colors.primary,
+    headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },
+  };
+}
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = still checking
@@ -70,20 +80,53 @@ export default function App() {
 
   const isLoading = session === undefined || (session && isApproved === undefined);
 
+  return (
+    <ThemeProvider session={session || null}>
+      <AppShell
+        isLoading={isLoading}
+        session={session}
+        isApproved={isApproved}
+        checkApproval={checkApproval}
+      />
+    </ThemeProvider>
+  );
+}
+
+function AppShell({ isLoading, session, isApproved, checkApproval }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const navigationTheme = useMemo(() => {
+    const base = colors.mode === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      dark: colors.mode === 'dark',
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.textPrimary,
+        border: colors.border,
+        notification: colors.primary,
+      },
+    };
+  }, [colors]);
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF6B4A" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <NavigationContainer>
+      <StatusBar style={colors.mode === 'dark' ? 'light' : 'dark'} />
+      <NavigationContainer theme={navigationTheme}>
         {session && isApproved ? (
-          <Stack.Navigator initialRouteName="Home">
+          <Stack.Navigator initialRouteName="Home" screenOptions={stackScreenOptions(colors)}>
             <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'My Recipes' }} />
             <Stack.Screen
               name="RecipeDetail"
@@ -105,6 +148,11 @@ export default function App() {
               component={GroceryScreen}
               options={{ title: 'Grocery List' }}
             />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{ title: 'Appearance' }}
+            />
           </Stack.Navigator>
         ) : (
           <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -122,11 +170,13 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F7F5F2',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+    },
+  });
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { addGroceryItems } from '../services/grocery';
 import { selectRecipeById, useRecipeStore } from '../store/useRecipeStore';
+import { useThemeColors } from '../theme/ThemeContext';
+import { getIngredientEmoji } from '../utils/ingredientEmoji';
 import { SERVING_MULTIPLIERS, scaleIngredientText } from '../utils/servingScaler';
 
 const BANNER_DURATION_MS = 4000;
@@ -19,6 +21,8 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const { id } = route.params;
   const recipe = useRecipeStore(selectRecipeById(id));
   const deleteRecipe = useRecipeStore((state) => state.deleteRecipe);
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
   const [servingMultiplier, setServingMultiplier] = useState(1);
@@ -54,7 +58,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
           )
         : undefined,
     });
-  }, [navigation, recipe, id]);
+  }, [navigation, recipe, id, styles]);
 
   const handleConfirmDelete = () => {
     setIsConfirmVisible(false);
@@ -172,7 +176,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
           {ingredients && ingredients.length > 0 ? (
             ingredients.map((item, index) => (
               <View key={`${item}-${index}`} style={styles.listRow}>
-                <Text style={styles.bullet}>•</Text>
+                <Text style={styles.ingredientEmoji}>{getIngredientEmoji(item)}</Text>
                 <Text style={styles.listText}>{scaleIngredientText(item, servingMultiplier)}</Text>
               </View>
             ))
@@ -188,7 +192,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
               disabled={isAddingToGroceryList}
             >
               {isAddingToGroceryList ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.textOnPrimary} size="small" />
               ) : (
                 <Text style={styles.groceryButtonText}>🛒 Add Ingredients to Grocery List</Text>
               )}
@@ -254,267 +258,269 @@ export default function RecipeDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-  },
-  container: {
-    padding: 20,
-    paddingBottom: 60,
-  },
-  heroImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: 16,
-    backgroundColor: '#F0EAE3',
-    marginBottom: 18,
-  },
-  heroPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroPlaceholderIcon: {
-    fontSize: 56,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 10,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  categoryBadge: {
-    backgroundColor: '#FFF1EC',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    marginRight: 12,
-  },
-  categoryText: {
-    fontSize: 13,
-    color: '#FF6B4A',
-    fontWeight: '600',
-  },
-  prepTime: {
-    fontSize: 13,
-    color: '#8A8A8A',
-  },
-  servingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  servingLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4A4A4A',
-    marginRight: 12,
-  },
-  servingChips: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  servingChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-  },
-  servingChipActive: {
-    backgroundColor: '#FF6B4A',
-    borderColor: '#FF6B4A',
-  },
-  servingChipText: {
-    fontSize: 13,
-    color: '#4A4A4A',
-    fontWeight: '600',
-  },
-  servingChipTextActive: {
-    color: '#fff',
-  },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 12,
-  },
-  listRow: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  bullet: {
-    fontSize: 15,
-    color: '#FF6B4A',
-    marginRight: 10,
-    lineHeight: 22,
-  },
-  stepNumber: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FF6B4A',
-    marginRight: 10,
-    lineHeight: 22,
-    minWidth: 20,
-  },
-  listText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#3A3A3A',
-    lineHeight: 22,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#9A9A9A',
-    fontStyle: 'italic',
-  },
-  groceryButton: {
-    backgroundColor: '#FF6B4A',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  groceryButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  banner: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  bannerError: {
-    backgroundColor: '#FDEAE6',
-    borderWidth: 1,
-    borderColor: '#F5C4B8',
-  },
-  bannerSuccess: {
-    backgroundColor: '#E8F5E9',
-    borderWidth: 1,
-    borderColor: '#A5D6A7',
-  },
-  bannerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 2,
-  },
-  bannerMessage: {
-    fontSize: 13,
-    color: '#5A5A5A',
-  },
-  deleteButton: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    backgroundColor: '#FDEAE6',
-    borderWidth: 1,
-    borderColor: '#F5C4B8',
-  },
-  deleteButtonText: {
-    color: '#D64A2E',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  headerEditButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  headerEditText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF6B4A',
-  },
-  missingContainer: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  missingText: {
-    fontSize: 16,
-    color: '#4A4A4A',
-    marginBottom: 16,
-  },
-  backButton: {
-    backgroundColor: '#FF6B4A',
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 6,
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: '#8A8A8A',
-    marginBottom: 14,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-    gap: 10,
-  },
-  modalButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  modalCancelButton: {
-    backgroundColor: '#F0EDE7',
-  },
-  modalCancelText: {
-    color: '#4A4A4A',
-    fontWeight: '600',
-  },
-  modalDeleteButton: {
-    backgroundColor: '#D64A2E',
-  },
-  modalDeleteText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    flex: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      padding: 20,
+      paddingBottom: 60,
+    },
+    heroImage: {
+      width: '100%',
+      height: 220,
+      borderRadius: 16,
+      backgroundColor: colors.primaryLight,
+      marginBottom: 18,
+    },
+    heroPlaceholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    heroPlaceholderIcon: {
+      fontSize: 56,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 10,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    categoryBadge: {
+      backgroundColor: colors.primaryLight,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 14,
+      marginRight: 12,
+    },
+    categoryText: {
+      fontSize: 13,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    prepTime: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    servingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    servingLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginRight: 12,
+    },
+    servingChips: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    servingChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    servingChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    servingChipText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    servingChipTextActive: {
+      color: colors.textOnPrimary,
+    },
+    section: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 18,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    sectionTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 12,
+    },
+    listRow: {
+      flexDirection: 'row',
+      marginBottom: 10,
+      alignItems: 'flex-start',
+    },
+    ingredientEmoji: {
+      fontSize: 17,
+      marginRight: 10,
+      lineHeight: 22,
+    },
+    stepNumber: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.primary,
+      marginRight: 10,
+      lineHeight: 22,
+      minWidth: 20,
+    },
+    listText: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.textPrimary,
+      lineHeight: 22,
+    },
+    emptyText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontStyle: 'italic',
+    },
+    groceryButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 6,
+    },
+    groceryButtonText: {
+      color: colors.textOnPrimary,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    banner: {
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+    },
+    bannerError: {
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    bannerSuccess: {
+      backgroundColor: colors.successLight,
+      borderWidth: 1,
+      borderColor: colors.successBorder,
+    },
+    bannerTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    bannerMessage: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    deleteButton: {
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 8,
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    deleteButtonText: {
+      color: colors.error,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    headerEditButton: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    headerEditText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    missingContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    missingText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      marginBottom: 16,
+    },
+    backButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+    },
+    backButtonText: {
+      color: colors.textOnPrimary,
+      fontWeight: '700',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      padding: 20,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 6,
+    },
+    modalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginBottom: 14,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 16,
+      gap: 10,
+    },
+    modalButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    modalCancelButton: {
+      backgroundColor: colors.background,
+    },
+    modalCancelText: {
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    modalDeleteButton: {
+      backgroundColor: colors.error,
+    },
+    modalDeleteText: {
+      color: '#fff',
+      fontWeight: '700',
+    },
+  });
+}

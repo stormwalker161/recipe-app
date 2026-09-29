@@ -2,7 +2,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,7 +15,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import RecipePhotoPicker from '../components/RecipePhotoPicker';
 import { CATEGORIES, useRecipeStore } from '../store/useRecipeStore';
+import { useThemeColors } from '../theme/ThemeContext';
 import { parseRecipeFromImage, parseRecipeFromPdf, parseRecipeFromText } from '../utils/aiParser';
 
 const BANNER_DURATION_MS = 5000;
@@ -29,12 +31,15 @@ const ACTIONS = [
 
 export default function AddRecipeScreen({ navigation }) {
   const addRecipe = useRecipeStore((state) => state.addRecipe);
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [prepTime, setPrepTime] = useState('');
   const [ingredients, setIngredients] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [photoUri, setPhotoUri] = useState(null);
 
   const [isUrlModalVisible, setIsUrlModalVisible] = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -239,7 +244,7 @@ export default function AddRecipeScreen({ navigation }) {
         prepTime: prepTime.trim(),
         ingredients: ingredientList,
         instructions: instructionList,
-        imageUri: null,
+        imageUri: photoUri,
       });
 
       setTitle('');
@@ -247,6 +252,7 @@ export default function AddRecipeScreen({ navigation }) {
       setPrepTime('');
       setIngredients('');
       setInstructions('');
+      setPhotoUri(null);
 
       navigation.goBack();
     } catch (error) {
@@ -298,11 +304,16 @@ export default function AddRecipeScreen({ navigation }) {
         <Text style={styles.sectionTitle}>Or Enter Manually</Text>
 
         <View style={styles.formGroup}>
+          <Text style={styles.label}>Photo</Text>
+          <RecipePhotoPicker imageUri={photoUri} onChange={setPhotoUri} />
+        </View>
+
+        <View style={styles.formGroup}>
           <Text style={styles.label}>Title</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. Grandma's Lasagna"
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={title}
             onChangeText={setTitle}
           />
@@ -324,7 +335,7 @@ export default function AddRecipeScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="e.g. 25 min"
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={prepTime}
             onChangeText={setPrepTime}
           />
@@ -335,7 +346,7 @@ export default function AddRecipeScreen({ navigation }) {
           <TextInput
             style={[styles.input, styles.textArea]}
             placeholder={'Separate with commas or new lines\ne.g. Flour, Sugar, Eggs'}
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={ingredients}
             onChangeText={setIngredients}
             multiline
@@ -349,7 +360,7 @@ export default function AddRecipeScreen({ navigation }) {
           <TextInput
             style={[styles.input, styles.textArea]}
             placeholder={'One step per line\ne.g. Preheat the oven to 350°F'}
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={instructions}
             onChangeText={setInstructions}
             multiline
@@ -383,7 +394,7 @@ export default function AddRecipeScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="https://example.com/recipe"
-              placeholderTextColor="#B0AAA2"
+              placeholderTextColor={colors.textMuted}
               value={urlInput}
               onChangeText={setUrlInput}
               autoCapitalize="none"
@@ -448,7 +459,7 @@ export default function AddRecipeScreen({ navigation }) {
       {isProcessing && (
         <View style={styles.processingOverlay}>
           <View style={styles.processingCard}>
-            <ActivityIndicator size="large" color="#FF6B4A" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.processingText}>{processingLabel}</Text>
           </View>
         </View>
@@ -457,213 +468,215 @@ export default function AddRecipeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  container: {
-    padding: 20,
-    paddingBottom: 60,
-    backgroundColor: '#F7F5F2',
-    flexGrow: 1,
-  },
-  banner: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  bannerError: {
-    backgroundColor: '#FDEAE6',
-    borderWidth: 1,
-    borderColor: '#F5C4B8',
-  },
-  bannerInfo: {
-    backgroundColor: '#EAF1FD',
-    borderWidth: 1,
-    borderColor: '#C4D7F5',
-  },
-  bannerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 2,
-  },
-  bannerMessage: {
-    fontSize: 13,
-    color: '#5A5A5A',
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#8A8A8A',
-    marginBottom: 16,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  actionCard: {
-    width: '48%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  actionIcon: {
-    fontSize: 30,
-    marginBottom: 10,
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2B2B2B',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 11,
-    color: '#9A9A9A',
-    textAlign: 'center',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E6E1D8',
-    marginVertical: 20,
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4A4A4A',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#2B2B2B',
-  },
-  textArea: {
-    minHeight: 90,
-  },
-  pickerWrapper: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-    overflow: 'hidden',
-  },
-  picker: {
-    color: '#2B2B2B',
-  },
-  saveButton: {
-    backgroundColor: '#FF6B4A',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: '#8A8A8A',
-    marginBottom: 14,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-    gap: 10,
-  },
-  modalButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  modalCancelButton: {
-    backgroundColor: '#F0EDE7',
-  },
-  modalCancelText: {
-    color: '#4A4A4A',
-    fontWeight: '600',
-  },
-  modalConfirmButton: {
-    backgroundColor: '#FF6B4A',
-  },
-  modalConfirmText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(247, 245, 242, 0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  processingCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingVertical: 28,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  processingText: {
-    marginTop: 14,
-    fontSize: 14,
-    color: '#4A4A4A',
-    fontWeight: '600',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    flex: {
+      flex: 1,
+    },
+    container: {
+      padding: 20,
+      paddingBottom: 60,
+      backgroundColor: colors.background,
+      flexGrow: 1,
+    },
+    banner: {
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+    },
+    bannerError: {
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    bannerInfo: {
+      backgroundColor: colors.infoLight,
+      borderWidth: 1,
+      borderColor: colors.infoBorder,
+    },
+    bannerTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    bannerMessage: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    sectionTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    sectionSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginBottom: 16,
+    },
+    actionGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+    },
+    actionCard: {
+      width: '48%',
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      paddingVertical: 20,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      marginBottom: 14,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    actionIcon: {
+      fontSize: 30,
+      marginBottom: 10,
+    },
+    actionLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: 4,
+    },
+    actionSubtitle: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    divider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 20,
+    },
+    formGroup: {
+      marginBottom: 16,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    textArea: {
+      minHeight: 90,
+    },
+    pickerWrapper: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    picker: {
+      color: colors.textPrimary,
+    },
+    saveButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    saveButtonText: {
+      color: colors.textOnPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      padding: 20,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    modalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginBottom: 14,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 16,
+      gap: 10,
+    },
+    modalButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    modalCancelButton: {
+      backgroundColor: colors.background,
+    },
+    modalCancelText: {
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    modalConfirmButton: {
+      backgroundColor: colors.primary,
+    },
+    modalConfirmText: {
+      color: colors.textOnPrimary,
+      fontWeight: '700',
+    },
+    processingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: `${colors.background}EB`,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    processingCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      paddingVertical: 28,
+      paddingHorizontal: 32,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+    processingText: {
+      marginTop: 14,
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+  });
+}

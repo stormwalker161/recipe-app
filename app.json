@@ -29,8 +29,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan handwritten recipes.",
-          "photosPermission": false,
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan handwritten recipes or take a recipe photo.",
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to add a picture to your recipes.",
           "microphonePermission": false
         }
       ]

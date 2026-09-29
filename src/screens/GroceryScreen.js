@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,10 +17,15 @@ import {
   fetchGroceryItems,
   toggleGroceryItem,
 } from '../services/grocery';
+import { useThemeColors } from '../theme/ThemeContext';
+import { getIngredientEmoji } from '../utils/ingredientEmoji';
 
 const BANNER_DURATION_MS = 4000;
 
 export default function GroceryScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isClearing, setIsClearing] = useState(false);
@@ -168,6 +173,8 @@ export default function GroceryScreen() {
         </View>
       </TouchableOpacity>
 
+      <Text style={styles.itemEmoji}>{getIngredientEmoji(item.ingredient)}</Text>
+
       <View style={styles.itemTextWrapper}>
         <Text
           style={[styles.itemText, item.isCompleted && styles.itemTextCompleted]}
@@ -208,7 +215,7 @@ export default function GroceryScreen() {
         <TextInput
           style={[styles.input, styles.ingredientInput]}
           placeholder="Add an item…"
-          placeholderTextColor="#B0AAA2"
+          placeholderTextColor={colors.textMuted}
           value={newIngredient}
           onChangeText={setNewIngredient}
           onSubmitEditing={handleAddItem}
@@ -217,7 +224,7 @@ export default function GroceryScreen() {
         <TextInput
           style={[styles.input, styles.amountInput]}
           placeholder="Amount"
-          placeholderTextColor="#B0AAA2"
+          placeholderTextColor={colors.textMuted}
           value={newAmount}
           onChangeText={setNewAmount}
           onSubmitEditing={handleAddItem}
@@ -230,7 +237,7 @@ export default function GroceryScreen() {
           disabled={isAdding}
         >
           {isAdding ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={colors.textOnPrimary} size="small" />
           ) : (
             <Text style={styles.addButtonText}>+</Text>
           )}
@@ -245,7 +252,7 @@ export default function GroceryScreen() {
           disabled={isClearing}
         >
           {isClearing ? (
-            <ActivityIndicator color="#FF6B4A" size="small" />
+            <ActivityIndicator color={colors.primary} size="small" />
           ) : (
             <Text style={styles.clearButtonText}>Clear Completed</Text>
           )}
@@ -254,7 +261,7 @@ export default function GroceryScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FF6B4A" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -277,168 +284,174 @@ export default function GroceryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-  },
-  banner: {
-    borderRadius: 12,
-    padding: 14,
-    marginHorizontal: 16,
-    marginTop: 12,
-  },
-  bannerError: {
-    backgroundColor: '#FDEAE6',
-    borderWidth: 1,
-    borderColor: '#F5C4B8',
-  },
-  bannerInfo: {
-    backgroundColor: '#EAF1FD',
-    borderWidth: 1,
-    borderColor: '#C4D7F5',
-  },
-  bannerText: {
-    fontSize: 13,
-    color: '#4A4A4A',
-    fontWeight: '600',
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginTop: 12,
-    gap: 8,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#2B2B2B',
-  },
-  ingredientInput: {
-    flex: 1,
-  },
-  amountInput: {
-    width: 90,
-  },
-  addButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#FF6B4A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonDisabled: {
-    opacity: 0.5,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '400',
-    lineHeight: 26,
-  },
-  clearButton: {
-    alignSelf: 'flex-end',
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  clearButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FF6B4A',
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  list: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 60,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  checkboxTouchable: {
-    marginRight: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#E0DCD5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: '#FF6B4A',
-    borderColor: '#FF6B4A',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  itemTextWrapper: {
-    flex: 1,
-  },
-  itemText: {
-    fontSize: 15,
-    color: '#2B2B2B',
-    fontWeight: '500',
-  },
-  itemTextCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#B0AAA2',
-  },
-  itemAmount: {
-    fontSize: 12,
-    color: '#9A9A9A',
-    marginTop: 2,
-  },
-  deleteTouchable: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    marginLeft: 8,
-  },
-  deleteIcon: {
-    fontSize: 14,
-    color: '#B0AAA2',
-  },
-  emptyState: {
-    alignItems: 'center',
-    marginTop: 60,
-    paddingHorizontal: 30,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#9A9A9A',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    banner: {
+      borderRadius: 12,
+      padding: 14,
+      marginHorizontal: 16,
+      marginTop: 12,
+    },
+    bannerError: {
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    bannerInfo: {
+      backgroundColor: colors.infoLight,
+      borderWidth: 1,
+      borderColor: colors.infoBorder,
+    },
+    bannerText: {
+      fontSize: 13,
+      color: colors.textPrimary,
+      fontWeight: '600',
+    },
+    addRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 16,
+      marginTop: 12,
+      gap: 8,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    ingredientInput: {
+      flex: 1,
+    },
+    amountInput: {
+      width: 90,
+    },
+    addButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addButtonDisabled: {
+      opacity: 0.5,
+    },
+    addButtonText: {
+      color: colors.textOnPrimary,
+      fontSize: 24,
+      fontWeight: '400',
+      lineHeight: 26,
+    },
+    clearButton: {
+      alignSelf: 'flex-end',
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    clearButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    list: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 60,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginBottom: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    checkboxTouchable: {
+      marginRight: 12,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 8,
+      borderWidth: 2,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    checkboxChecked: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    checkmark: {
+      color: colors.textOnPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    itemEmoji: {
+      fontSize: 18,
+      marginRight: 10,
+    },
+    itemTextWrapper: {
+      flex: 1,
+    },
+    itemText: {
+      fontSize: 15,
+      color: colors.textPrimary,
+      fontWeight: '500',
+    },
+    itemTextCompleted: {
+      textDecorationLine: 'line-through',
+      color: colors.textMuted,
+    },
+    itemAmount: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    deleteTouchable: {
+      paddingHorizontal: 4,
+      paddingVertical: 4,
+      marginLeft: 8,
+    },
+    deleteIcon: {
+      fontSize: 14,
+      color: colors.textMuted,
+    },
+    emptyState: {
+      alignItems: 'center',
+      marginTop: 60,
+      paddingHorizontal: 30,
+    },
+    emptyIcon: {
+      fontSize: 40,
+      marginBottom: 12,
+    },
+    emptyText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+  });
+}

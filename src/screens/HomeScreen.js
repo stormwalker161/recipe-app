@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
@@ -9,6 +9,7 @@ import {
   selectSortedRecipes,
   useRecipeStore,
 } from '../store/useRecipeStore';
+import { useThemeColors } from '../theme/ThemeContext';
 import { supabase } from '../utils/supabase';
 
 const FILTERS = ['All', ...CATEGORIES];
@@ -16,6 +17,8 @@ const FILTERS = ['All', ...CATEGORIES];
 export default function HomeScreen({ navigation }) {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -29,6 +32,13 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.headerIcon}>🛒</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.headerIcon}>🎨</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => supabase.auth.signOut()}
             style={styles.headerLogoutButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -38,7 +48,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       ),
     });
-  }, [navigation]);
+  }, [navigation, styles]);
 
   // selectSortedRecipes/selectRecipesByCategory build a fresh sorted array on every
   // call, so they must be wrapped in useShallow -- otherwise React's external store
@@ -78,7 +88,7 @@ export default function HomeScreen({ navigation }) {
         <TextInput
           style={styles.searchInput}
           placeholder="Search recipes…"
-          placeholderTextColor="#B0AAA2"
+          placeholderTextColor={colors.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -129,120 +139,122 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-  },
-  searchWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  searchIcon: {
-    fontSize: 15,
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#2B2B2B',
-    padding: 0,
-  },
-  searchClear: {
-    fontSize: 14,
-    color: '#B0AAA2',
-    paddingHorizontal: 4,
-  },
-  chipRow: {
-    flexGrow: 0,
-  },
-  chipList: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-  },
-  chipActive: {
-    backgroundColor: '#FF6B4A',
-    borderColor: '#FF6B4A',
-  },
-  chipText: {
-    fontSize: 14,
-    color: '#4A4A4A',
-    fontWeight: '500',
-  },
-  chipTextActive: {
-    color: '#fff',
-  },
-  recipeList: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 100,
-  },
-  emptyState: {
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#999',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 28,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#FF6B4A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  fabIcon: {
-    fontSize: 30,
-    color: '#fff',
-    lineHeight: 32,
-    fontWeight: '400',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  headerIconButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  headerIcon: {
-    fontSize: 20,
-  },
-  headerLogoutButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  headerLogoutText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FF6B4A',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    searchWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    searchIcon: {
+      fontSize: 15,
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.textPrimary,
+      padding: 0,
+    },
+    searchClear: {
+      fontSize: 14,
+      color: colors.textMuted,
+      paddingHorizontal: 4,
+    },
+    chipRow: {
+      flexGrow: 0,
+    },
+    chipList: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 8,
+    },
+    chip: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    chipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    chipText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    chipTextActive: {
+      color: colors.textOnPrimary,
+    },
+    recipeList: {
+      paddingHorizontal: 16,
+      paddingTop: 4,
+      paddingBottom: 100,
+    },
+    emptyState: {
+      alignItems: 'center',
+      marginTop: 60,
+    },
+    emptyText: {
+      fontSize: 15,
+      color: colors.textSecondary,
+    },
+    fab: {
+      position: 'absolute',
+      right: 20,
+      bottom: 28,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    fabIcon: {
+      fontSize: 30,
+      color: colors.textOnPrimary,
+      lineHeight: 32,
+      fontWeight: '400',
+    },
+    headerButtons: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    headerIconButton: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    headerIcon: {
+      fontSize: 20,
+    },
+    headerLogoutButton: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    headerLogoutText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+  });
+}

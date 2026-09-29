@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,9 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useThemeColors } from '../theme/ThemeContext';
 import { isSupabaseConfigured, supabase } from '../utils/supabase';
 
 export default function AuthScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [mode, setMode] = useState('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -99,7 +103,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -114,7 +118,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="••••••••"
-            placeholderTextColor="#B0AAA2"
+            placeholderTextColor={colors.textMuted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -131,7 +135,7 @@ export default function AuthScreen() {
           disabled={isSubmitting}
         >
           {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
             <Text style={styles.submitButtonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
           )}
@@ -155,104 +159,106 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-  },
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  logo: {
-    fontSize: 48,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#8A8A8A',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  errorBanner: {
-    backgroundColor: '#FDEAE6',
-    borderWidth: 1,
-    borderColor: '#F5C4B8',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#5A5A5A',
-  },
-  noticeBanner: {
-    backgroundColor: '#EAF1FD',
-    borderWidth: 1,
-    borderColor: '#C4D7F5',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  noticeText: {
-    fontSize: 13,
-    color: '#5A5A5A',
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4A4A4A',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DCD5',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#2B2B2B',
-  },
-  submitButton: {
-    backgroundColor: '#FF6B4A',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  submitButtonDisabled: {
-    opacity: 0.7,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  switchModeButton: {
-    marginTop: 18,
-    alignItems: 'center',
-  },
-  switchModeText: {
-    fontSize: 14,
-    color: '#FF6B4A',
-    fontWeight: '600',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    flex: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: 24,
+    },
+    logo: {
+      fontSize: 48,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    title: {
+      fontSize: 26,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: 6,
+    },
+    subtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: 24,
+    },
+    errorBanner: {
+      backgroundColor: colors.errorLight,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+    },
+    errorText: {
+      fontSize: 13,
+      color: colors.textPrimary,
+    },
+    noticeBanner: {
+      backgroundColor: colors.infoLight,
+      borderWidth: 1,
+      borderColor: colors.infoBorder,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+    },
+    noticeText: {
+      fontSize: 13,
+      color: colors.textPrimary,
+    },
+    formGroup: {
+      marginBottom: 16,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    submitButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    submitButtonDisabled: {
+      opacity: 0.7,
+    },
+    submitButtonText: {
+      color: colors.textOnPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    switchModeButton: {
+      marginTop: 18,
+      alignItems: 'center',
+    },
+    switchModeText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+  });
+}

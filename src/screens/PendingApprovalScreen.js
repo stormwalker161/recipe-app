@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useThemeColors } from '../theme/ThemeContext';
 import { supabase } from '../utils/supabase';
 
 export default function PendingApprovalScreen({ onCheckAgain }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [isChecking, setIsChecking] = useState(false);
 
   const handleCheckAgain = async () => {
@@ -30,7 +33,7 @@ export default function PendingApprovalScreen({ onCheckAgain }) {
         disabled={isChecking}
       >
         {isChecking ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.textOnPrimary} />
         ) : (
           <Text style={styles.checkButtonText}>Check Again</Text>
         )}
@@ -43,57 +46,59 @@ export default function PendingApprovalScreen({ onCheckAgain }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F5F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  icon: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#2B2B2B',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#8A8A8A',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 28,
-  },
-  checkButton: {
-    backgroundColor: '#FF6B4A',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  checkButtonDisabled: {
-    opacity: 0.7,
-  },
-  checkButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  signOutButton: {
-    marginTop: 18,
-  },
-  signOutText: {
-    fontSize: 14,
-    color: '#9A9A9A',
-    fontWeight: '600',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 32,
+    },
+    icon: {
+      fontSize: 48,
+      marginBottom: 12,
+    },
+    title: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 10,
+    },
+    subtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 28,
+    },
+    checkButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 32,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    checkButtonDisabled: {
+      opacity: 0.7,
+    },
+    checkButtonText: {
+      color: colors.textOnPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    signOutButton: {
+      marginTop: 18,
+    },
+    signOutText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+  });
+}

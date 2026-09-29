@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { deleteRecipeImages, isLocalImageUri, uploadRecipeImage } from '../services/recipeImages';
 import { supabase } from '../utils/supabase';
 
 export const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Dessert'];
@@ -91,12 +92,24 @@ export const useRecipeStore = create((set, get) => ({
     // relying on a server-assigned id that was never going to exist.
     const id = recipe.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const createdAt = recipe.createdAt ?? new Date().toISOString();
+
+    // A camera/library/OCR photo only exists on this device/browser session
+    // (file://, blob:, etc.) until it's uploaded somewhere permanent -- do
+    // that now so the image survives a reload or a different device. If the
+    // upload fails, save the rest of the recipe anyway rather than losing
+    // everything over a photo hiccup.
+    let imageUri = recipe.imageUri ?? null;
+    if (isLocalImageUri(imageUri)) {
+      imageUri = await uploadRecipeImage(user.id, id, imageUri);
+    }
+
     const cleanRecipe = {
       ...recipe,
       title: sanitizeText(recipe.title),
       prepTime: sanitizeText(recipe.prepTime),
       ingredients: sanitizeList(recipe.ingredients),
       instructions: sanitizeList(recipe.instructions),
+      imageUri,
     };
 
     set((state) => ({
@@ -125,22 +138,56 @@ export const useRecipeStore = create((set, get) => ({
     if (error) {
       console.warn('Failed to delete recipe from Supabase:', error.message);
       set({ recipes: previousRecipes, error: error.message });
+      return;
+    }
+
+    // Best-effort: clean up the recipe's stored photo(s) so deleted recipes
+    // don't leave orphaned files behind. Never blocks or fails the delete.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      deleteRecipeImages(user.id, id);
     }
   },
 
   updateRecipe: async (id, updates) => {
     const previousRecipes = get().recipes;
+
+    let nextUpdates = updates;
+    if (updates.imageUri !== undefined && isLocalImageUri(updates.imageUri)) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uploadedUrl = user ? await uploadRecipeImage(user.id, id, updates.imageUri) : null;
+
+      if (uploadedUrl) {
+        nextUpdates = { ...updates, imageUri: uploadedUrl };
+      } else {
+        // Upload failed -- drop imageUri from this update so it doesn't
+        // wipe out the recipe's existing photo, but still apply every other
+        // field the user changed.
+        const { imageUri, ...rest } = updates;
+        nextUpdates = rest;
+        set({ error: 'Could not upload that photo. Your other changes were saved.' });
+      }
+    }
+
     set((state) => ({
-      recipes: state.recipes.map((recipe) => (recipe.id === id ? { ...recipe, ...updates } : recipe)),
+      recipes: state.recipes.map((recipe) =>
+        recipe.id === id ? { ...recipe, ...nextUpdates } : recipe
+      ),
     }));
 
     const row = {};
-    if (updates.title !== undefined) row.title = sanitizeText(updates.title);
-    if (updates.category !== undefined) row.category = updates.category;
-    if (updates.prepTime !== undefined) row.prep_time = sanitizeText(updates.prepTime);
-    if (updates.imageUri !== undefined) row.image_uri = updates.imageUri;
-    if (updates.ingredients !== undefined) row.ingredients = sanitizeList(updates.ingredients);
-    if (updates.instructions !== undefined) row.instructions = sanitizeList(updates.instructions);
+    if (nextUpdates.title !== undefined) row.title = sanitizeText(nextUpdates.title);
+    if (nextUpdates.category !== undefined) row.category = nextUpdates.category;
+    if (nextUpdates.prepTime !== undefined) row.prep_time = sanitizeText(nextUpdates.prepTime);
+    if (nextUpdates.imageUri !== undefined) row.image_uri = nextUpdates.imageUri;
+    if (nextUpdates.ingredients !== undefined) row.ingredients = sanitizeList(nextUpdates.ingredients);
+    if (nextUpdates.instructions !== undefined) row.instructions = sanitizeList(nextUpdates.instructions);
+
+    if (Object.keys(row).length === 0) return;
 
     const { error } = await supabase.from('recipes').update(row).eq('id', id);
     if (error) {
