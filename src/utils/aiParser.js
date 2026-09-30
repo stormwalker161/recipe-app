@@ -548,7 +548,13 @@ async function searchOpenverse(query) {
     page_size: '10',
     mature: 'false',
   })}`;
-  const response = await fetch(searchUrl);
+  // `cache: 'no-store'` -- a GET request to the exact same query string
+  // (which happens every time someone re-searches the same recipe, e.g.
+  // after removing a bad photo and trying again) would otherwise risk being
+  // served straight from the browser's HTTP cache instead of hitting
+  // Openverse again, silently repeating whatever result came back the
+  // first time.
+  const response = await fetch(searchUrl, { cache: 'no-store' });
   if (!response.ok) return [];
   const data = await response.json().catch(() => null);
   return data?.results ?? [];
