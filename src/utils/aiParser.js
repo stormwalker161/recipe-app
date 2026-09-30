@@ -513,12 +513,26 @@ export async function parseRecipeFromPdf(base64Pdf) {
 // menus, and clip art) -- skip them rather than attaching something odd.
 const NON_FOOD_PHOTO_HINT_PATTERN = /clip ?art|illustration|menu|logo|icon|drawing|cartoon/i;
 
-// Ignore short/common words when scoring how well a search result's title
-// matches the recipe -- otherwise something generic like "food" or "dish"
-// would count as a "match" against literally every candidate.
+// Words to strip out of a recipe title before using it as a search query --
+// both generic filler ("a", "with") and, importantly, the kind of marketing/
+// personalizing fluff that's extremely common in recipe titles but will
+// essentially *never* appear in a stock photo's own caption or tags
+// ("Grandma's", "Copycat", "Air Fryer", "Sheet Pan", "Instant Pot"...).
+// Openverse's search treats a multi-word query as an AND across every word,
+// so leaving these in very often wiped out results entirely for what is
+// otherwise a perfectly ordinary, well-photographed dish -- e.g. "Grandma's
+// Sunday Pot Roast" returned nothing, but "roast" alone returned plenty.
 const TITLE_STOP_WORDS = new Set([
-  'a', 'an', 'the', 'with', 'and', 'or', 'of', 'in', 'on', 'for', 'to',
-  'food', 'dish', 'recipe', 'breakfast', 'lunch', 'dinner', 'snacks', 'snack', 'dessert',
+  'a', 'an', 'the', 'with', 'and', 'or', 'of', 'in', 'on', 'for', 'to', 'my', 'your', 'our',
+  'food', 'dish', 'recipe', 'meal',
+  'breakfast', 'lunch', 'dinner', 'snacks', 'snack', 'dessert',
+  'grandmas', 'grandma', 'grandpas', 'grandpa', 'moms', 'mom', 'dads', 'dad',
+  'famous', 'homemade', 'copycat', 'easy', 'quick', 'best', 'classic', 'simple',
+  'ultimate', 'perfect', 'favorite', 'favourite', 'amazing', 'delicious',
+  'air', 'fryer', 'instant', 'pot', 'sheet', 'pan', 'one', 'slow', 'cooker', 'crockpot',
+  'crock', 'oven', 'stovetop', 'skillet',
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+  'night', 'weeknight',
 ]);
 
 function titleKeywords(title) {
@@ -526,6 +540,18 @@ function titleKeywords(title) {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((word) => word.length > 2 && !TITLE_STOP_WORDS.has(word));
+}
+
+async function searchOpenverse(query) {
+  const searchUrl = `${OPENVERSE_SEARCH_URL}?${new URLSearchParams({
+    q: query,
+    page_size: '10',
+    mature: 'false',
+  })}`;
+  const response = await fetch(searchUrl);
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => null);
+  return data?.results ?? [];
 }
 
 /**
@@ -554,18 +580,19 @@ export async function findFoodPhotoOnline(recipe) {
     const title = (recipe?.title || '').trim();
     if (!title || title.toLowerCase() === 'untitled recipe') return null;
 
-    const query = `${title} ${recipe?.category || ''} food dish`.trim();
-    const searchUrl = `${OPENVERSE_SEARCH_URL}?${new URLSearchParams({
-      q: query,
-      page_size: '6',
-      mature: 'false',
-    })}`;
+    const keywords = titleKeywords(title);
+    if (keywords.length === 0) return null; // Nothing distinctive left to search for.
 
-    const response = await fetch(searchUrl);
-    if (!response.ok) return null;
-
-    const data = await response.json().catch(() => null);
-    const results = data?.results ?? [];
+    // Try the full filtered keyword set first (most specific/accurate
+    // match); if that's too narrow and comes back empty, fall back to just
+    // the last word or two -- recipe titles tend to put the actual dish
+    // noun at the end (e.g. "...Pot Roast", "...Chicken Wings"), so this
+    // catches most of what the first attempt misses.
+    let results = await searchOpenverse(`${keywords.join(' ')} food`);
+    if (results.length === 0 && keywords.length > 1) {
+      results = await searchOpenverse(`${keywords.slice(-2).join(' ')} food`);
+    }
+    if (results.length === 0) return null;
 
     const candidates = results.filter((result) => {
       if (typeof result?.url !== 'string' || !result.url) return false;
@@ -580,7 +607,6 @@ export async function findFoodPhotoOnline(recipe) {
     // names the dish. Re-rank by how many of the recipe's own title words
     // (e.g. "salmon", "asparagus") show up in each candidate's title, and
     // only fall back to Openverse's original order among ties.
-    const keywords = titleKeywords(title);
     const scored = candidates.map((result, index) => {
       const resultTitle = (result.title || '').toLowerCase();
       const score = keywords.filter((word) => resultTitle.includes(word)).length;
