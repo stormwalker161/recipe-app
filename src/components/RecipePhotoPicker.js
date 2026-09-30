@@ -35,6 +35,16 @@ export default function RecipePhotoPicker({ imageUri, onChange, recipe }) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
 
+  // The search is otherwise entirely deterministic for a given title, so
+  // without this, disliking a result and searching again would always hand
+  // back that exact same photo. Track everything shown so far (starting
+  // with whatever's already attached, if it looks like a previous online
+  // find rather than the user's own photo) so each retry can ask for a
+  // genuinely different one instead.
+  const [triedUrls, setTriedUrls] = useState(() =>
+    imageUri && /^https?:\/\//i.test(imageUri) ? [imageUri] : []
+  );
+
   const canSearchOnline = !!recipe?.title?.trim();
 
   const findPhotoOnline = async () => {
@@ -42,13 +52,18 @@ export default function RecipePhotoPicker({ imageUri, onChange, recipe }) {
     setSearchMessage('');
     setIsSearching(true);
 
-    const foundUri = await findFoodPhotoOnline(recipe);
+    const foundUri = await findFoodPhotoOnline(recipe, { excludeUrls: triedUrls });
 
     setIsSearching(false);
     if (foundUri) {
+      setTriedUrls((prev) => [...prev, foundUri]);
       onChange(foundUri);
     } else {
-      setSearchMessage("Couldn't find a matching photo online. Try again or add your own.");
+      setSearchMessage(
+        triedUrls.length > 0
+          ? "Couldn't find another matching photo online. Try again later or add your own."
+          : "Couldn't find a matching photo online. Try again or add your own."
+      );
       setTimeout(() => setSearchMessage(''), 4000);
     }
   };
@@ -148,7 +163,7 @@ export default function RecipePhotoPicker({ imageUri, onChange, recipe }) {
               <Text
                 style={[styles.modalOptionText, !canSearchOnline && styles.modalOptionDisabled]}
               >
-                🔍 Find Photo Online
+                {triedUrls.length > 0 ? '🔍 Find a Different Photo' : '🔍 Find Photo Online'}
               </Text>
             </TouchableOpacity>
             {!!imageUri && (

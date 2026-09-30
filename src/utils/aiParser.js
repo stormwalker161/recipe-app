@@ -580,9 +580,16 @@ async function searchOpenverse(query) {
  * photo -- see recipeImages.js), or `null` if nothing relevant was found or
  * the search failed for any reason. Never throws: a missing "nice to have"
  * photo should never block saving the actual recipe.
+ *
+ * `excludeUrls` (optional) skips any candidate whose URL is already in that
+ * list -- otherwise, since the search is entirely deterministic for a given
+ * title, re-running "Find Photo Online" after disliking the result would
+ * always hand back that exact same photo again. Passing in whatever's been
+ * shown so far lets the caller offer a genuinely different pick each time.
  */
-export async function findFoodPhotoOnline(recipe) {
+export async function findFoodPhotoOnline(recipe, { excludeUrls = [] } = {}) {
   try {
+    const excluded = new Set(excludeUrls);
     const title = (recipe?.title || '').trim();
     if (!title || title.toLowerCase() === 'untitled recipe') return null;
 
@@ -612,6 +619,7 @@ export async function findFoodPhotoOnline(recipe) {
 
       const candidates = results.filter((result) => {
         if (typeof result?.url !== 'string' || !result.url) return false;
+        if (excluded.has(result.url)) return false;
         const haystack = `${result.title || ''} ${result.url}`;
         return !NON_FOOD_PHOTO_HINT_PATTERN.test(haystack);
       });
