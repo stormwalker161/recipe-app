@@ -10,7 +10,12 @@ import {
   View,
 } from 'react-native';
 import { addGroceryItems } from '../services/grocery';
-import { addMealPlanEntry, DAYS_OF_WEEK } from '../services/mealPlanner';
+import {
+  addMealPlanEntry,
+  DAYS_OF_WEEK,
+  formatWeekLabel,
+  getWeekStartDate,
+} from '../services/mealPlanner';
 import { selectRecipeById, useRecipeStore } from '../store/useRecipeStore';
 import { useThemeColors } from '../theme/ThemeContext';
 import { getIngredientEmoji } from '../utils/ingredientEmoji';
@@ -29,10 +34,21 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [isAddingToGroceryList, setIsAddingToGroceryList] = useState(false);
   const [isPlanModalVisible, setIsPlanModalVisible] = useState(false);
+  // Which week (0 = this week, 1 = next week, etc.) the day picker below is
+  // currently scheduling into -- resets to "this week" every time the modal
+  // is opened fresh, but can be paged forward/back with the ‹ / › arrows to
+  // plan multiple weeks ahead.
+  const [planWeekOffset, setPlanWeekOffset] = useState(0);
   // Which specific day is currently being saved, if any -- tracked by value
   // (rather than a plain boolean) so only the row the user actually tapped
   // shows a spinner, instead of all seven lighting up at once.
   const [schedulingDay, setSchedulingDay] = useState(null);
+
+  const planWeekStartDate = useMemo(() => getWeekStartDate(planWeekOffset), [planWeekOffset]);
+  const planWeekLabel = useMemo(
+    () => formatWeekLabel(planWeekStartDate, planWeekOffset),
+    [planWeekStartDate, planWeekOffset]
+  );
 
   // Alert.alert() is a silent no-op on web, so status messages go through
   // this in-app banner instead -- same pattern as AddRecipeScreen.
@@ -110,9 +126,9 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const handleSchedule = async (day) => {
     setSchedulingDay(day);
     try {
-      await addMealPlanEntry({ recipeId: id, dayOfWeek: day });
+      await addMealPlanEntry({ recipeId: id, dayOfWeek: day, weekStartDate: planWeekStartDate });
       setIsPlanModalVisible(false);
-      showBanner('success', 'Added to Meal Plan', `Scheduled for ${day}.`);
+      showBanner('success', 'Added to Meal Plan', `Scheduled for ${day} (${planWeekLabel}).`);
     } catch (error) {
       showBanner(
         'error',
@@ -174,7 +190,10 @@ export default function RecipeDetailScreen({ route, navigation }) {
         <TouchableOpacity
           style={styles.planButton}
           activeOpacity={0.85}
-          onPress={() => setIsPlanModalVisible(true)}
+          onPress={() => {
+            setPlanWeekOffset(0);
+            setIsPlanModalVisible(true);
+          }}
         >
           <Text style={styles.planButtonText}>📅 Plan for a Meal</Text>
         </TouchableOpacity>
@@ -296,6 +315,30 @@ export default function RecipeDetailScreen({ route, navigation }) {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Plan for a Meal</Text>
             <Text style={styles.modalSubtitle}>Which day should &quot;{title}&quot; go on?</Text>
+
+            <View style={styles.planWeekNav}>
+              <TouchableOpacity
+                onPress={() => setPlanWeekOffset((current) => current - 1)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.planWeekArrow}
+                disabled={!!schedulingDay}
+              >
+                <Text style={styles.planWeekArrowText}>‹</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.planWeekLabel} numberOfLines={1}>
+                {planWeekLabel}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => setPlanWeekOffset((current) => current + 1)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.planWeekArrow}
+                disabled={!!schedulingDay}
+              >
+                <Text style={styles.planWeekArrowText}>›</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.dayList}>
               {DAYS_OF_WEEK.map((day) => (
@@ -604,6 +647,36 @@ function createStyles(colors) {
     modalDeleteText: {
       color: '#fff',
       fontWeight: '700',
+    },
+    planWeekNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14,
+      marginTop: 14,
+    },
+    planWeekArrow: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    planWeekArrowText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.primary,
+      lineHeight: 18,
+    },
+    planWeekLabel: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      minWidth: 130,
+      textAlign: 'center',
     },
     dayList: {
       marginTop: 4,

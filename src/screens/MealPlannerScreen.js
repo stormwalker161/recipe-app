@@ -10,7 +10,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { DAYS_OF_WEEK, fetchMealPlan, removeMealPlanEntry } from '../services/mealPlanner';
+import {
+  DAYS_OF_WEEK,
+  fetchMealPlan,
+  formatWeekLabel,
+  getWeekStartDate,
+  removeMealPlanEntry,
+} from '../services/mealPlanner';
 import { useThemeColors } from '../theme/ThemeContext';
 
 const BANNER_DURATION_MS = 4000;
@@ -18,6 +24,16 @@ const BANNER_DURATION_MS = 4000;
 export default function MealPlannerScreen({ navigation }) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // 0 = this week, 1 = next week, -1 = last week, etc. -- lets the whole
+  // screen page back and forth between weeks instead of only ever showing
+  // one merged view of "Monday" regardless of which week it's in.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekStartDate = useMemo(() => getWeekStartDate(weekOffset), [weekOffset]);
+  const weekLabel = useMemo(
+    () => formatWeekLabel(weekStartDate, weekOffset),
+    [weekStartDate, weekOffset]
+  );
 
   const [entries, setEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,13 +50,15 @@ export default function MealPlannerScreen({ navigation }) {
   // Same pattern as GroceryScreen: refetch on every focus, since entries are
   // most often added from a recipe's "Plan for a Meal" button on a
   // different screen, and guard against updating state after navigating
-  // away before the fetch resolves.
+  // away before the fetch resolves. `weekStartDate` is also in the deps
+  // list so tapping the ‹ / › week arrows (which stay on this screen, never
+  // blurring it) still triggers a fresh fetch for the newly-selected week.
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
       setIsLoading(true);
-      fetchMealPlan()
+      fetchMealPlan(weekStartDate)
         .then((data) => {
           if (isActive) setEntries(data);
         })
@@ -54,7 +72,7 @@ export default function MealPlannerScreen({ navigation }) {
       return () => {
         isActive = false;
       };
-    }, [])
+    }, [weekStartDate])
   );
 
   const entriesByDay = useMemo(() => {
@@ -138,6 +156,28 @@ export default function MealPlannerScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
+      <View style={styles.weekNav}>
+        <TouchableOpacity
+          onPress={() => setWeekOffset((current) => current - 1)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.weekNavArrow}
+        >
+          <Text style={styles.weekNavArrowText}>‹</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.weekNavLabel} numberOfLines={1}>
+          {weekLabel}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setWeekOffset((current) => current + 1)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.weekNavArrow}
+        >
+          <Text style={styles.weekNavArrowText}>›</Text>
+        </TouchableOpacity>
+      </View>
+
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -187,6 +227,37 @@ function createStyles(colors) {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    weekNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      gap: 16,
+    },
+    weekNavArrow: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    weekNavArrowText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.primary,
+      lineHeight: 20,
+    },
+    weekNavLabel: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      minWidth: 150,
+      textAlign: 'center',
     },
     list: {
       padding: 16,

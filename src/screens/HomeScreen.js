@@ -180,9 +180,18 @@ function createStyles(colors) {
       paddingHorizontal: 4,
     },
     chipRow: {
+      // Without an explicit height, some mobile browsers (notably iOS
+      // Safari) collapse a horizontal, scrollable FlatList to roughly the
+      // height of its text alone, clipping off the top/bottom of the chip
+      // pills around it -- this worked fine on desktop but showed the
+      // chips "halfway hidden" on phones. Giving the row a fixed height
+      // (tall enough for the pill padding + border) fixes it everywhere.
       flexGrow: 0,
+      height: 60,
     },
     chipList: {
+      flexGrow: 1,
+      alignItems: 'center',
       paddingHorizontal: 16,
       paddingVertical: 12,
       gap: 8,
