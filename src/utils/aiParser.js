@@ -584,37 +584,49 @@ export async function findFoodPhotoOnline(recipe) {
     if (keywords.length === 0) return null; // Nothing distinctive left to search for.
 
     // Try the full filtered keyword set first (most specific/accurate
-    // match); if that's too narrow and comes back empty, fall back to just
-    // the last word or two -- recipe titles tend to put the actual dish
-    // noun at the end (e.g. "...Pot Roast", "...Chicken Wings"), so this
-    // catches most of what the first attempt misses.
-    let results = await searchOpenverse(`${keywords.join(' ')} food`);
-    if (results.length === 0 && keywords.length > 1) {
-      results = await searchOpenverse(`${keywords.slice(-2).join(' ')} food`);
+    // match), then progressively drop words from the front and retry --
+    // recipe titles tend to put the actual dish noun at the end (e.g.
+    // "...Pot Roast", "...Chicken Wings"), so narrowing this way usually
+    // lands on the part that's actually going to be photographed.
+    //
+    // Crucially, a query returning *some* result isn't good enough on its
+    // own: Openverse's AND-style search occasionally matches every query
+    // word purely by coincidence in some totally unrelated photo's caption/
+    // tags (e.g. "Bear Chocolate Chip Cookies" matched exactly one result
+    // that turned out to be an unrelated photo of a person -- none of
+    // "bear", "chocolate", "chip", or "cookies" actually described it, they
+    // just all happened to appear somewhere in its tags). So each attempt
+    // is only accepted if the best-scoring candidate's own title actually
+    // contains at least one of the recipe's keywords; otherwise, keep
+    // narrowing rather than trusting a coincidental match.
+    for (let start = 0; start < keywords.length; start++) {
+      const queryWords = keywords.slice(start);
+      const results = await searchOpenverse(`${queryWords.join(' ')} food`);
+      if (results.length === 0) continue;
+
+      const candidates = results.filter((result) => {
+        if (typeof result?.url !== 'string' || !result.url) return false;
+        const haystack = `${result.title || ''} ${result.url}`;
+        return !NON_FOOD_PHOTO_HINT_PATTERN.test(haystack);
+      });
+      if (candidates.length === 0) continue;
+
+      // Rank by how many of the *full* recipe title's keywords (not just
+      // this attempt's narrowed-down subset) show up in each candidate's
+      // title -- a photo captioned "Fillet of salmon with asparagus" should
+      // outrank one merely captioned "Asparagus" even once we've narrowed
+      // the query itself down to just "asparagus".
+      const scored = candidates.map((result, index) => {
+        const resultTitle = (result.title || '').toLowerCase();
+        const score = keywords.filter((word) => resultTitle.includes(word)).length;
+        return { result, score, index };
+      });
+      scored.sort((a, b) => b.score - a.score || a.index - b.index);
+
+      if (scored[0].score > 0) return scored[0].result.url;
     }
-    if (results.length === 0) return null;
 
-    const candidates = results.filter((result) => {
-      if (typeof result?.url !== 'string' || !result.url) return false;
-      const haystack = `${result.title || ''} ${result.url}`;
-      return !NON_FOOD_PHOTO_HINT_PATTERN.test(haystack);
-    });
-    if (candidates.length === 0) return null;
-
-    // Openverse ranks by its own relevance/popularity signals, which often
-    // surface something generically food-adjacent (e.g. a "what we've been
-    // cooking" roundup collage) ahead of a result whose title actually
-    // names the dish. Re-rank by how many of the recipe's own title words
-    // (e.g. "salmon", "asparagus") show up in each candidate's title, and
-    // only fall back to Openverse's original order among ties.
-    const scored = candidates.map((result, index) => {
-      const resultTitle = (result.title || '').toLowerCase();
-      const score = keywords.filter((word) => resultTitle.includes(word)).length;
-      return { result, score, index };
-    });
-    scored.sort((a, b) => b.score - a.score || a.index - b.index);
-
-    return scored[0].result.url;
+    return null;
   } catch (error) {
     console.warn('Failed to find a food photo online:', error.message);
     return null;
