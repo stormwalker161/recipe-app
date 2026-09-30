@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { addGroceryItems } from '../services/grocery';
+import { addMealPlanEntry, DAYS_OF_WEEK } from '../services/mealPlanner';
 import { selectRecipeById, useRecipeStore } from '../store/useRecipeStore';
 import { useThemeColors } from '../theme/ThemeContext';
 import { getIngredientEmoji } from '../utils/ingredientEmoji';
@@ -27,6 +28,11 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [isAddingToGroceryList, setIsAddingToGroceryList] = useState(false);
+  const [isPlanModalVisible, setIsPlanModalVisible] = useState(false);
+  // Which specific day is currently being saved, if any -- tracked by value
+  // (rather than a plain boolean) so only the row the user actually tapped
+  // shows a spinner, instead of all seven lighting up at once.
+  const [schedulingDay, setSchedulingDay] = useState(null);
 
   // Alert.alert() is a silent no-op on web, so status messages go through
   // this in-app banner instead -- same pattern as AddRecipeScreen.
@@ -101,6 +107,23 @@ export default function RecipeDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleSchedule = async (day) => {
+    setSchedulingDay(day);
+    try {
+      await addMealPlanEntry({ recipeId: id, dayOfWeek: day });
+      setIsPlanModalVisible(false);
+      showBanner('success', 'Added to Meal Plan', `Scheduled for ${day}.`);
+    } catch (error) {
+      showBanner(
+        'error',
+        'Could Not Schedule',
+        error.message || 'Something went wrong scheduling this meal.'
+      );
+    } finally {
+      setSchedulingDay(null);
+    }
+  };
+
   if (!recipe) {
     return (
       <View style={styles.missingContainer}>
@@ -147,6 +170,14 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </View>
           {!!prepTime && <Text style={styles.prepTime}>⏱ {prepTime}</Text>}
         </View>
+
+        <TouchableOpacity
+          style={styles.planButton}
+          activeOpacity={0.85}
+          onPress={() => setIsPlanModalVisible(true)}
+        >
+          <Text style={styles.planButtonText}>📅 Plan for a Meal</Text>
+        </TouchableOpacity>
 
         {ingredients && ingredients.length > 0 && (
           <View style={styles.servingRow}>
@@ -254,6 +285,44 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={isPlanModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsPlanModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Plan for a Meal</Text>
+            <Text style={styles.modalSubtitle}>Which day should &quot;{title}&quot; go on?</Text>
+
+            <View style={styles.dayList}>
+              {DAYS_OF_WEEK.map((day) => (
+                <TouchableOpacity
+                  key={day}
+                  style={styles.dayOption}
+                  onPress={() => handleSchedule(day)}
+                  activeOpacity={0.7}
+                  disabled={!!schedulingDay}
+                >
+                  <Text style={styles.dayOptionText}>{day}</Text>
+                  {schedulingDay === day && <ActivityIndicator size="small" color={colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setIsPlanModalVisible(false)}
+              activeOpacity={0.7}
+              disabled={!!schedulingDay}
+            >
+              <Text style={styles.modalCancelOnlyText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -308,6 +377,20 @@ function createStyles(colors) {
     prepTime: {
       fontSize: 13,
       color: colors.textSecondary,
+    },
+    planButton: {
+      backgroundColor: colors.primaryLight,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primaryBorder,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginBottom: 18,
+    },
+    planButtonText: {
+      color: colors.primary,
+      fontSize: 15,
+      fontWeight: '700',
     },
     servingRow: {
       flexDirection: 'row',
@@ -521,6 +604,34 @@ function createStyles(colors) {
     modalDeleteText: {
       color: '#fff',
       fontWeight: '700',
+    },
+    dayList: {
+      marginTop: 4,
+    },
+    dayOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 13,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    dayOptionText: {
+      fontSize: 15,
+      color: colors.textPrimary,
+      fontWeight: '500',
+    },
+    modalCancel: {
+      marginTop: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: 12,
+    },
+    modalCancelOnlyText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textSecondary,
     },
   });
 }

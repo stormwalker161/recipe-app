@@ -32,6 +32,13 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.headerIcon}>🛒</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => navigation.navigate('MealPlanner')}
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.headerIcon}>📅</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             style={styles.headerIconButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

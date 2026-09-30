@@ -9,6 +9,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import EditRecipeScreen from './src/screens/EditRecipeScreen';
 import GroceryScreen from './src/screens/GroceryScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import MealPlannerScreen from './src/screens/MealPlannerScreen';
 import PendingApprovalScreen from './src/screens/PendingApprovalScreen';
 import RecipeDetailScreen from './src/screens/RecipeDetailScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -147,6 +148,11 @@ function AppShell({ isLoading, session, isApproved, checkApproval }) {
               name="Grocery"
               component={GroceryScreen}
               options={{ title: 'Grocery List' }}
+            />
+            <Stack.Screen
+              name="MealPlanner"
+              component={MealPlannerScreen}
+              options={{ title: 'Meal Planner' }}
             />
             <Stack.Screen
               name="Settings"
