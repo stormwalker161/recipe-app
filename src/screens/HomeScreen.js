@@ -186,8 +186,14 @@ function createStyles(colors) {
       // pills around it -- this worked fine on desktop but showed the
       // chips "halfway hidden" on phones. Giving the row a fixed height
       // (tall enough for the pill padding + border) fixes it everywhere.
+      //
+      // The height here must comfortably fit chipList's vertical padding
+      // plus the chip's own padding/border/line-height (see chipText's
+      // explicit lineHeight below, which pins that last number down so it
+      // can't vary by a few px between Android/iOS/web font metrics and
+      // end up clipped again).
       flexGrow: 0,
-      height: 60,
+      height: 68,
     },
     chipList: {
       flexGrow: 1,
@@ -198,7 +204,7 @@ function createStyles(colors) {
     },
     chip: {
       paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingVertical: 10,
       borderRadius: 20,
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -210,6 +216,7 @@ function createStyles(colors) {
     },
     chipText: {
       fontSize: 14,
+      lineHeight: 18,
       color: colors.textSecondary,
       fontWeight: '500',
     },
