@@ -29,7 +29,7 @@ const BANNER_DURATION_MS = 5000;
 
 const ACTIONS = [
   { key: 'url', icon: '🔗', label: 'Paste Website URL', subtitle: 'Import from a recipe link' },
-  { key: 'scan', icon: '📷', label: 'Scan Handwritten Recipe', subtitle: 'Use your camera' },
+  { key: 'scan', icon: '📷', label: 'Scan Handwritten Recipe', subtitle: 'Camera or photo library' },
   { key: 'pdf', icon: '📄', label: 'Upload PDF', subtitle: 'Import from a document' },
   { key: 'manual', icon: '⌨️', label: 'Type Manually', subtitle: 'Fill out the form below' },
 ];
@@ -48,6 +48,8 @@ export default function AddRecipeScreen({ navigation }) {
 
   const [isUrlModalVisible, setIsUrlModalVisible] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+
+  const [isScanSourceModalVisible, setIsScanSourceModalVisible] = useState(false);
 
   const [isPageConfirmVisible, setIsPageConfirmVisible] = useState(false);
   const [pageConfirmCount, setPageConfirmCount] = useState(0);
@@ -120,7 +122,51 @@ export default function AddRecipeScreen({ navigation }) {
     pageConfirmResolverRef.current = null;
   };
 
-  const handleScanHandwritten = async () => {
+  /**
+   * Shared tail end of both scan paths (camera and photo library): sends
+   * the captured/selected page photo(s) to Gemini for OCR + extraction,
+   * best-effort finds a real photo of the finished dish to attach (not the
+   * photo of the paper/screen itself), saves the recipe, then leaves the
+   * screen. `errorTitle` just lets each entry point show a banner title
+   * that matches how the user got here ("Scan Failed" vs "Import Failed").
+   */
+  const importRecipeFromPhotos = async (photos, errorTitle) => {
+    if (photos.length === 0) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingLabel(
+      photos.length > 1 ? `Reading ${photos.length}-page recipe…` : 'Reading your recipe…'
+    );
+
+    try {
+      const recipe = await parseRecipeFromImage(
+        photos.map((photo) => ({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' }))
+      );
+
+      // Deliberately NOT `photos[0].uri` -- that's a picture of the paper
+      // recipe card (or phone screen) itself, not the finished dish. Look
+      // for a real photo of the dish online instead (best-effort; recipe
+      // still saves fine if nothing is found, just without a photo).
+      setProcessingLabel('Finding a photo of your dish…');
+      const imageUri = await findFoodPhotoOnline(recipe);
+
+      await addRecipe({ ...recipe, imageUri });
+      navigation.goBack();
+    } catch (error) {
+      showBanner('error', errorTitle, error.message || 'Something went wrong reading that recipe.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleScanHandwritten = () => {
+    setIsScanSourceModalVisible(true);
+  };
+
+  const handleScanFromCamera = async () => {
+    setIsScanSourceModalVisible(false);
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -159,32 +205,58 @@ export default function AddRecipeScreen({ navigation }) {
         }
       }
 
-      if (photos.length === 0) {
+      await importRecipeFromPhotos(photos, 'Scan Failed');
+    } catch (error) {
+      showBanner('error', 'Scan Failed', error.message || 'Something went wrong scanning that recipe.');
+    }
+  };
+
+  const handleScanFromLibrary = async () => {
+    setIsScanSourceModalVisible(false);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showBanner(
+          'error',
+          'Photos Permission Needed',
+          'Please allow photo library access to import a recipe.'
+        );
         return;
       }
 
-      setIsProcessing(true);
-      setProcessingLabel(
-        photos.length > 1 ? `Reading ${photos.length}-page recipe…` : 'Reading handwritten recipe…'
-      );
+      // Multi-select so a recipe that spans several photos (e.g. a
+      // screenshot of ingredients and another of the instructions) can be
+      // picked and read together in one go, same as scanning several pages
+      // with the camera. `selectionLimit: 0` means "no limit" per Expo's
+      // ImagePicker API.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        base64: true,
+        quality: 0.6,
+        allowsMultipleSelection: true,
+        selectionLimit: 0,
+      });
 
-      const recipe = await parseRecipeFromImage(
-        photos.map((photo) => ({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' }))
-      );
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
 
-      // Deliberately NOT `photos[0].uri` -- that's a picture of the paper
-      // recipe card itself, not the finished dish. Look for a real photo of
-      // the dish online instead (best-effort; recipe still saves fine if
-      // nothing is found, just without a photo).
-      setProcessingLabel('Finding a photo of your dish…');
-      const imageUri = await findFoodPhotoOnline(recipe);
+      const photos = result.assets.filter((asset) => !!asset.base64);
+      if (photos.length === 0) {
+        showBanner('error', 'Import Failed', 'Could not read the selected photo(s). Please try again.');
+        return;
+      }
+      if (photos.length < result.assets.length) {
+        showBanner(
+          'info',
+          'Some Photos Skipped',
+          `${result.assets.length - photos.length} photo(s) couldn't be read and were left out.`
+        );
+      }
 
-      await addRecipe({ ...recipe, imageUri });
-      navigation.goBack();
+      await importRecipeFromPhotos(photos, 'Import Failed');
     } catch (error) {
-      showBanner('error', 'Scan Failed', error.message || 'Something went wrong scanning that recipe.');
-    } finally {
-      setIsProcessing(false);
+      showBanner('error', 'Import Failed', error.message || 'Something went wrong importing that recipe.');
     }
   };
 
@@ -467,6 +539,45 @@ export default function AddRecipeScreen({ navigation }) {
       </Modal>
 
       <Modal
+        visible={isScanSourceModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsScanSourceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Scan a Recipe</Text>
+            <Text style={styles.modalSubtitle}>
+              Take a new photo, or choose an existing one from your camera roll.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.sourceOption}
+              onPress={handleScanFromCamera}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sourceOptionText}>📷 Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sourceOption}
+              onPress={handleScanFromLibrary}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sourceOptionText}>🖼️ Choose from Camera Roll</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setIsScanSourceModalVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelOnlyText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isPageConfirmVisible}
         transparent
         animationType="fade"
@@ -672,6 +783,29 @@ function createStyles(colors) {
       fontSize: 13,
       color: colors.textSecondary,
       marginBottom: 14,
+    },
+    sourceOption: {
+      paddingVertical: 14,
+      paddingHorizontal: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    sourceOptionText: {
+      fontSize: 15,
+      color: colors.textPrimary,
+      fontWeight: '500',
+    },
+    modalCancel: {
+      marginTop: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: 12,
+    },
+    modalCancelOnlyText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textSecondary,
     },
     modalActions: {
       flexDirection: 'row',
