@@ -129,6 +129,7 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
           />
         )}
+        style={styles.recipeListContainer}
         contentContainerStyle={styles.recipeList}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -222,6 +223,20 @@ function createStyles(colors) {
     },
     chipTextActive: {
       color: colors.textOnPrimary,
+    },
+    recipeListContainer: {
+      // Without an explicit flex:1 here, this FlatList had no height
+      // constraint of its own and simply grew to fit all of its content.
+      // On a screen with enough recipes that made the whole page taller
+      // than the viewport, so the page itself scrolled instead of just
+      // this list. On iOS Safari that outer page-scroll triggers the
+      // browser's address-bar auto-hide/show reflow roughly a second
+      // after load, which resizes the viewport and re-lays-out everything
+      // above it -- making the already-fixed category chip row look like
+      // it "shrinks" again shortly after the screen first renders.
+      // Giving this list flex:1 makes it (and only it) the scrollable
+      // region, so the page itself never needs to scroll.
+      flex: 1,
     },
     recipeList: {
       paddingHorizontal: 16,
