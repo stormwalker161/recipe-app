@@ -151,6 +151,15 @@ function createStyles(colors) {
   return StyleSheet.create({
     container: {
       flex: 1,
+      // WebKit/Safari gives flex items a default min-height of "auto",
+      // which floors their height at their content's natural size instead
+      // of letting flex:1 actually shrink them to fit the viewport --
+      // Chrome is lenient about this, Safari enforces it strictly. Without
+      // minHeight:0 here, this whole column (and everything below it,
+      // including the fixed-height chip row) can get pushed taller than
+      // the screen on iOS, which is what was causing the chips to look
+      // fine for a moment and then get squeezed/clipped again.
+      minHeight: 0,
       backgroundColor: colors.background,
     },
     searchWrapper: {
@@ -235,8 +244,11 @@ function createStyles(colors) {
       // above it -- making the already-fixed category chip row look like
       // it "shrinks" again shortly after the screen first renders.
       // Giving this list flex:1 makes it (and only it) the scrollable
-      // region, so the page itself never needs to scroll.
+      // region, so the page itself never needs to scroll. minHeight:0 is
+      // required alongside flex:1 for Safari specifically -- see the
+      // comment on `container` above for why.
       flex: 1,
+      minHeight: 0,
     },
     recipeList: {
       paddingHorizontal: 16,
